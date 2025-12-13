@@ -1,0 +1,55 @@
+{
+  "name": "imean-service-engine",
+  "version": "2.5.0",
+  "description": "基于Hono的轻量级微服务引擎框架",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsx tests/integration/start-service.ts",
+    "test": "vitest --run",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --run --coverage",
+    "prepublishOnly": "npm run build && npm run test"
+  },
+  "keywords": [
+    "microservice",
+    "hono",
+    "framework",
+    "typescript"
+  ],
+  "files": [
+    "dist",
+    "docs",
+    "README.md",
+    "LICENSE"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@hono/node-server": "^1.19.7",
+    "@opentelemetry/api": "^1.9.0",
+    "ejson": "^2.2.3",
+    "etcd3": "^1.1.2",
+    "hono": "^4.10.8",
+    "nanoid": "^5.1.6",
+    "prettier": "^3.7.4",
+    "winston": "^3.19.0",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "@types/ejson": "^2.2.2",
+    "@types/node": "^25.0.1",
+    "@vitest/coverage-v8": "4.0.15",
+    "@vitest/ui": "^4.0.15",
+    "imean-service-client": "^1.6.0",
+    "tsup": "^8.5.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.15",
+    "@opentelemetry/api": "^1"
+  },
+  "peerDependencies": {
+    "@opentelemetry/api": "^1"
+  }
+}
