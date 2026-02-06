@@ -32,14 +32,6 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           pnpm version $VERSION --no-git-tag-version
 
-      # 将 package.json 版本变更提交回 main，保持仓库与发布一致
-      - name: Commit version bump
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add package.json
-          git diff --staged --quiet || (git commit -m "chore: release v${{ steps.version.outputs.version }} [skip ci]" && git push origin HEAD:${{ github.event.repository.default_branch }})
-
       - run: pnpm install --frozen-lockfile
       - run: pnpm run build
       - run: pnpm run test
@@ -47,3 +39,11 @@ jobs:
       - run: pnpm publish --no-git-checks --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # 发布成功后，将 package.json 版本变更提交回 main
+      - name: Commit version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json
+          git diff --staged --quiet || (git commit -m "chore: release v${{ steps.version.outputs.version }} [skip ci]" && git push origin HEAD:${{ github.event.repository.default_branch }})
