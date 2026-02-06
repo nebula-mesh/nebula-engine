@@ -1,6 +1,6 @@
 {
   "name": "nebula-engine",
-  "version": "2.5.0",
+  "version": "1.0.0-beta",
   "description": "基于Hono的轻量级微服务引擎框架",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
