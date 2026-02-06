@@ -1,5 +1,5 @@
 {
-  "name": "imean-service-engine",
+  "name": "nebula-engine",
   "version": "2.5.0",
   "description": "基于Hono的轻量级微服务引擎框架",
   "main": "dist/index.js",

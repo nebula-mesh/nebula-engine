@@ -40,8 +40,8 @@ const etcdClient = new Etcd3({
 #### 2. 创建引擎并注册插件
 
 ```typescript
-import { Factory } from "@imean/service-engine";
-import { SchedulePlugin } from "@imean/service-engine/plugins/schedule";
+import { Factory } from "nebula-engine";
+import { SchedulePlugin } from "nebula-engine/plugins/schedule";
 import { Etcd3 } from "etcd3";
 
 const etcdClient = new Etcd3({
@@ -60,8 +60,8 @@ const { Module, Microservice } = Factory.create(
 如果不想依赖真实的 etcd 服务，可以使用内置的 Mock Etcd。Mock Etcd 会自动选举自己作为 leader，适合单实例开发和测试场景。
 
 ```typescript
-import { Factory } from "@imean/service-engine";
-import { SchedulePlugin } from "@imean/service-engine/plugins/schedule";
+import { Factory } from "nebula-engine";
+import { SchedulePlugin } from "nebula-engine/plugins/schedule";
 
 const { Module, Microservice } = Factory.create(
   new SchedulePlugin({
@@ -79,7 +79,7 @@ const { Module, Microservice } = Factory.create(
 
 ```typescript
 import { Module } from "./engine";
-import { Schedule, ScheduleMode } from "@imean/service-engine/plugins/schedule";
+import { Schedule, ScheduleMode } from "nebula-engine/plugins/schedule";
 
 @Module("user-service")
 class UserService {
@@ -184,8 +184,8 @@ async syncData() {
 ## 示例：完整的使用场景
 
 ```typescript
-import { Factory } from "@imean/service-engine";
-import { SchedulePlugin, Schedule, ScheduleMode } from "@imean/service-engine/plugins/schedule";
+import { Factory } from "nebula-engine";
+import { SchedulePlugin, Schedule, ScheduleMode } from "nebula-engine/plugins/schedule";
 import { Etcd3 } from "etcd3";
 
 // 1. 创建 etcd 客户端
@@ -235,8 +235,8 @@ console.log("服务已启动，调度任务已注册");
 ### 本地开发/测试（使用 Mock Etcd）
 
 ```typescript
-import { Factory } from "@imean/service-engine";
-import { SchedulePlugin, Schedule, ScheduleMode } from "@imean/service-engine/plugins/schedule";
+import { Factory } from "nebula-engine";
+import { SchedulePlugin, Schedule, ScheduleMode } from "nebula-engine/plugins/schedule";
 
 // 1. 创建引擎（使用 Mock Etcd，无需真实 etcd 服务）
 const { Module, Microservice } = Factory.create(

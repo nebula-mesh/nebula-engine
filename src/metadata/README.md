@@ -34,7 +34,7 @@ const keyToClassesMap = new Map<symbol, Set<Class>>();
 
 ```typescript
 // 通过 classMetadataStore 和固定的 DECORATED_KEYS_KEY 实现
-const DECORATED_KEYS_KEY = Symbol.for("imean:decoratedKeys");
+const DECORATED_KEYS_KEY = Symbol.for("nebula:decoratedKeys");
 // 存储在 classMetadataStore 中：classMetadataStore.get(class).get(DECORATED_KEYS_KEY) -> Set<symbol>
 ```
 
@@ -94,7 +94,7 @@ function registerKeyClassRelation(targetClass: Class, metadataKey: symbol): void
 
 ```typescript
 const Module = createClassDecorator();
-const key = Symbol.for("imean:classMetadata");
+const key = Symbol.for("nebula:classMetadata");
 
 @Module({ name: "user-module" })
 class UserService {}
@@ -127,7 +127,7 @@ class TestService {}
 
 // 查看类被哪些装饰器装饰
 const keys = getKeysByClass(TestService);
-// Set { Symbol(imean:classMetadata), Symbol(config), Symbol(cache) }
+// Set { Symbol(nebula:classMetadata), Symbol(config), Symbol(cache) }
 
 // 遍历所有 key 并获取对应的元数据
 for (const key of keys) {
@@ -177,7 +177,7 @@ class UserService {
 ```typescript
 import { getClassesByKey } from "./metadata/metadata";
 
-const key = Symbol.for("imean:classMetadata");
+const key = Symbol.for("nebula:classMetadata");
 const classes = getClassesByKey(key);
 // Set { UserService, OrderService, ... }
 ```
@@ -190,7 +190,7 @@ const classes = getClassesByKey(key);
 import { getKeysByClass } from "./metadata/metadata";
 
 const keys = getKeysByClass(UserService);
-// Set { Symbol(imean:classMetadata), Symbol(config), ... }
+// Set { Symbol(nebula:classMetadata), Symbol(config), ... }
 ```
 
 ### 读取元数据
@@ -276,7 +276,7 @@ import {
 } from "./metadata/metadata";
 
 const Module = createClassDecorator();
-const key = Symbol.for("imean:classMetadata");
+const key = Symbol.for("nebula:classMetadata");
 
 @Module({ name: "user-module" })
 class UserService {}

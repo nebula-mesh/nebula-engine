@@ -53,7 +53,7 @@ export class Factory {
     // 为每个工厂创建过程生成唯一的 key
     // 使用 Symbol 和时间戳确保唯一性
     const moduleMetadataKey = Symbol.for(
-      `imean:moduleMetadata:${Date.now()}:${Math.random()}`
+      `nebula:moduleMetadata:${Date.now()}:${Math.random()}`
     );
 
     // 创建一个类型化的 Microservice 类

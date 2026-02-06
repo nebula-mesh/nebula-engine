@@ -36,7 +36,7 @@ class AppConfig {
 
 ```typescript
 // src/config.ts
-import { Config } from "imean-service-engine/plugins/dynamic-config";
+import { Config } from "nebula-engine/plugins/dynamic-config";
 import { z } from "zod";
 
 @Module("app-config")
@@ -62,8 +62,8 @@ export class AppConfig {
 
 ```typescript
 // src/main.ts
-import { Factory } from "imean-service-engine";
-import { DynamicConfigPlugin } from "imean-service-engine/plugins/dynamic-config";
+import { Factory } from "nebula-engine";
+import { DynamicConfigPlugin } from "nebula-engine/plugins/dynamic-config";
 import { AppConfig } from "./config";
 import { Etcd3 } from "etcd3";
 
@@ -274,8 +274,8 @@ await configPlugin.setConfig("my-service/app-config/MAX_ATTEMPTS", 10);
 ## 🧪 测试
 
 ```typescript
-import { Testing } from "imean-service-engine";
-import { DynamicConfigPlugin } from "imean-service-engine/plugins/dynamic-config";
+import { Testing } from "nebula-engine";
+import { DynamicConfigPlugin } from "nebula-engine/plugins/dynamic-config";
 
 const { engine, Module } = Testing.createTestEngine({
   plugins: [new DynamicConfigPlugin({ useMockEtcd: true })],

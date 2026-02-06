@@ -438,7 +438,7 @@ export class RateLimitPlugin implements Plugin {
 #### 基本使用（RoutePlugin 自动注册）
 
 ```typescript
-import { Microservice } from "imean-service-engine";
+import { Microservice } from "nebula-engine";
 
 // RoutePlugin 已经自动注册，无需手动添加
 const engine = new Microservice({
@@ -500,7 +500,7 @@ const engine = new Microservice({
 ### 注册新的默认插件
 
 ```typescript
-import { Microservice } from "imean-service-engine";
+import { Microservice } from "nebula-engine";
 import { MyPlugin } from "./my-plugin";
 
 // 注册为默认插件

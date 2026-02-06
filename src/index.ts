@@ -1,5 +1,5 @@
 /**
- * IMean Service Engine - 微服务引擎框架
+ * Nebula Engine - 微服务引擎框架
  */
 
 // 核心类型
@@ -54,5 +54,5 @@ export { Context, MiddlewareHandler } from "hono";
 // 导出 logger
 export { default as logger } from "./core/logger";
 
-// 导出 imeanId
-export { imeanId, IMEAN_ID_ALPHABET } from "./core/imean-id";
+// 导出 nebulaId
+export { nebulaId, NEBULA_ID_ALPHABET } from "./core/nebula-id";

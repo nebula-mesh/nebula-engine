@@ -16,7 +16,7 @@
 
 ## 项目概述
 
-**IMean Service Engine v2** 是一个基于 Hono 的轻量级微服务引擎框架，采用插件化架构，支持装饰器驱动的 API 定义和自动类型推断。
+**Nebula Engine** 是一个基于 Hono 的轻量级微服务引擎框架，采用插件化架构，支持装饰器驱动的 API 定义和自动类型推断。
 
 ### 核心技术栈
 
@@ -682,7 +682,7 @@ const routePlugin = new RoutePlugin({
 使用 Zod 定义运行时验证 Schema：
 
 ```typescript
-import { z } from "imean-service-engine";
+import { z } from "nebula-engine";
 
 const UserSchema = z.object({
   id: z.string(),

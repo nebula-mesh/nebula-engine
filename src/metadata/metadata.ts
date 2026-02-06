@@ -17,7 +17,7 @@ type Class = new (...args: any[]) => any;
  * 固定的元数据键，用于在类上记录该类被哪些装饰器装饰了
  * 这个 key 存储的是 Set<symbol>，包含所有装饰该类的 key
  */
-const DECORATED_KEYS_KEY = Symbol.for("imean:decoratedKeys");
+const DECORATED_KEYS_KEY = Symbol.for("nebula:decoratedKeys");
 
 /**
  * key -> classes 映射
@@ -162,7 +162,7 @@ function registerKeyClassRelation(targetClass: Class, metadataKey: symbol): void
  * class UserService {}
  * ```
  */
-export function createClassDecorator(metadataKey: symbol = Symbol.for("imean:classMetadata")) {
+export function createClassDecorator(metadataKey: symbol = Symbol.for("nebula:classMetadata")) {
   return function <T extends Class>(
     metadata?: Record<string, any>
   ): (target: T, context: ClassDecoratorContext) => void {
@@ -207,7 +207,7 @@ export function createClassDecorator(metadataKey: symbol = Symbol.for("imean:cla
  * ```
  */
 export function createMethodDecorator(
-  metadataKey: symbol = Symbol.for("imean:methodMetadata")
+  metadataKey: symbol = Symbol.for("nebula:methodMetadata")
 ) {
   return function <T = Record<string, any>>(
     metadata: T & { type: string }
@@ -293,7 +293,7 @@ export function createMethodDecorator(
  * ```
  */
 export function createFieldDecorator(
-  metadataKey: symbol = Symbol.for("imean:fieldMetadata")
+  metadataKey: symbol = Symbol.for("nebula:fieldMetadata")
 ) {
   return function <T = Record<string, any>>(
     metadata: T & { type: string }
@@ -356,7 +356,7 @@ export function createFieldDecorator(
  * @example
  * ```typescript
  * const Module = createClassDecorator();
- * const key = Symbol.for("imean:classMetadata");
+ * const key = Symbol.for("nebula:classMetadata");
  *
  * @Module({ name: "module1" })
  * class Module1 {}
@@ -388,7 +388,7 @@ export function getClassesByKey(metadataKey: symbol): Set<Class> {
  * class TestService {}
  *
  * const keys = getKeysByClass(TestService);
- * // Set { Symbol(imean:classMetadata), Symbol(config) }
+ * // Set { Symbol(nebula:classMetadata), Symbol(config) }
  * ```
  */
 export function getKeysByClass(target: any): Set<symbol> {
@@ -429,7 +429,7 @@ export function getKeysByClass(target: any): Set<symbol> {
  */
 export function getClassMetadata(
   target: any,
-  metadataKey: symbol = Symbol.for("imean:classMetadata")
+  metadataKey: symbol = Symbol.for("nebula:classMetadata")
 ): any {
   // 获取类构造函数
   let targetClass: Class | null = null;
@@ -470,7 +470,7 @@ export function getClassMetadata(
 export function getMethodMetadata(
   target: any,
   methodName: string | symbol,
-  metadataKey: symbol = Symbol.for("imean:methodMetadata")
+  metadataKey: symbol = Symbol.for("nebula:methodMetadata")
 ): MethodMetadataItem[] {
   // 获取类构造函数
   let targetClass: Class | null = null;
@@ -510,7 +510,7 @@ export function getMethodMetadata(
  */
 export function getAllMethodMetadata(
   target: any,
-  metadataKey: symbol = Symbol.for("imean:methodMetadata")
+  metadataKey: symbol = Symbol.for("nebula:methodMetadata")
 ): Map<string | symbol, MethodMetadataItem[]> {
   const result = new Map<string | symbol, MethodMetadataItem[]>();
 
@@ -560,7 +560,7 @@ export function getAllMethodMetadata(
  */
 export function hasClassMetadata(
   target: any,
-  metadataKey: symbol = Symbol.for("imean:classMetadata")
+  metadataKey: symbol = Symbol.for("nebula:classMetadata")
 ): boolean {
   // 获取类构造函数
   let targetClass: Class | null = null;
@@ -601,7 +601,7 @@ export function hasClassMetadata(
 export function hasMethodMetadata(
   target: any,
   methodName: string | symbol,
-  metadataKey: symbol = Symbol.for("imean:methodMetadata")
+  metadataKey: symbol = Symbol.for("nebula:methodMetadata")
 ): boolean {
   const metadata = getMethodMetadata(target, methodName, metadataKey);
   return metadata.length > 0;
@@ -618,7 +618,7 @@ export function hasMethodMetadata(
 export function getFieldMetadata(
   target: any,
   fieldName: string | symbol,
-  metadataKey: symbol = Symbol.for("imean:fieldMetadata")
+  metadataKey: symbol = Symbol.for("nebula:fieldMetadata")
 ): FieldMetadataItem[] {
   // 获取类构造函数
   let targetClass: Class | null = null;
@@ -658,7 +658,7 @@ export function getFieldMetadata(
  */
 export function getAllFieldMetadata(
   target: any,
-  metadataKey: symbol = Symbol.for("imean:fieldMetadata")
+  metadataKey: symbol = Symbol.for("nebula:fieldMetadata")
 ): Map<string | symbol, FieldMetadataItem[]> {
   const result = new Map<string | symbol, FieldMetadataItem[]>();
 
@@ -710,7 +710,7 @@ export function getAllFieldMetadata(
 export function hasFieldMetadata(
   target: any,
   fieldName: string | symbol,
-  metadataKey: symbol = Symbol.for("imean:fieldMetadata")
+  metadataKey: symbol = Symbol.for("nebula:fieldMetadata")
 ): boolean {
   const metadata = getFieldMetadata(target, fieldName, metadataKey);
   return metadata.length > 0;

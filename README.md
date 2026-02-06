@@ -1,4 +1,4 @@
-# IMean Service Engine v2
+# Nebula Engine
 
 基于 Hono 的轻量级微服务引擎框架，支持插件化扩展和自动类型推断。
 
@@ -40,7 +40,7 @@
 ### 安装
 
 ```bash
-npm install imean-service-engine
+npm install nebula-engine
 ```
 
 ### 基本示例
@@ -53,7 +53,7 @@ import {
   RoutePlugin,
   Route,
   z,
-} from "imean-service-engine";
+} from "nebula-engine";
 
 // 1. 创建引擎工厂（必须显式注册所有需要的插件）
 const { Module, Microservice } = Factory.create(
@@ -109,7 +109,7 @@ console.log(`服务启动在端口 ${engine.getPort()}`);
 
 ## 框架概述
 
-IMean Service Engine 是一个基于插件的微服务框架，核心设计理念是：
+Nebula Engine 是一个基于插件的微服务框架，核心设计理念是：
 
 1. **插件化架构**：所有功能都通过插件实现，包括路由、缓存、定时任务等
 2. **显式注册**：所有插件必须显式注册，不会自动包含任何默认插件
@@ -200,7 +200,7 @@ Action 插件用于定义 RPC 风格的 API 端点，支持参数和返回值验
 #### 安装和注册
 
 ```typescript
-import { ActionPlugin, Action } from "imean-service-engine";
+import { ActionPlugin, Action } from "nebula-engine";
 
 const { Module, Microservice } = Factory.create(
   new ActionPlugin()
@@ -210,7 +210,7 @@ const { Module, Microservice } = Factory.create(
 #### 基本用法
 
 ```typescript
-import { z } from "imean-service-engine";
+import { z } from "nebula-engine";
 
 @Module("users")
 class UserService {
@@ -298,7 +298,7 @@ Route 插件用于定义 HTTP 路由，支持 RESTful API 和页面路由。
 #### 安装和注册
 
 ```typescript
-import { RoutePlugin, Route, Page } from "imean-service-engine";
+import { RoutePlugin, Route, Page } from "nebula-engine";
 
 const { Module, Microservice } = Factory.create(
   new RoutePlugin()
@@ -414,7 +414,7 @@ import {
   Cache,
   MemoryCacheAdapter,
   RedisCacheAdapter,
-} from "imean-service-engine";
+} from "nebula-engine";
 
 // 使用内存缓存（默认）
 const cachePlugin = new CachePlugin();
@@ -509,7 +509,7 @@ ClientCode 插件自动生成类型化的客户端代码，支持服务间互调
 #### 安装和注册
 
 ```typescript
-import { ClientCodePlugin } from "imean-service-engine";
+import { ClientCodePlugin } from "nebula-engine";
 
 const { Module, Microservice } = Factory.create(
   new ActionPlugin(),
@@ -574,7 +574,7 @@ Schedule 插件提供分布式定时任务功能，基于 etcd 实现主节点�
 #### 安装和注册
 
 ```typescript
-import { SchedulePlugin, Schedule } from "imean-service-engine";
+import { SchedulePlugin, Schedule } from "nebula-engine";
 import { Etcd3 } from "etcd3";
 
 // 使用真实的 etcd
@@ -633,7 +633,7 @@ GracefulShutdown 插件提供优雅停机功能，自动追踪处理器执行并
 #### 安装和注册
 
 ```typescript
-import { GracefulShutdownPlugin } from "imean-service-engine";
+import { GracefulShutdownPlugin } from "nebula-engine";
 
 const { Module, Microservice } = Factory.create(
   new ActionPlugin(),
@@ -719,7 +719,7 @@ class OrderService {
 使用 Zod schema 定义数据类型，实现类型安全和运行时验证：
 
 ```typescript
-import { z } from "imean-service-engine";
+import { z } from "nebula-engine";
 
 const UserSchema = z.object({
   id: z.string(),
@@ -810,7 +810,7 @@ async getUserData(userId: string, type: string) {
 框架提供了预检机制，用于在服务启动前进行必要的检查和初始化（如数据库连接、Redis 连接等）：
 
 ```typescript
-import { startCheck, PreStartChecker } from "imean-service-engine";
+import { startCheck, PreStartChecker } from "nebula-engine";
 
 // 定义预检项
 const checkers: PreStartChecker[] = [
@@ -1083,13 +1083,13 @@ async getUser() {}
 
 ```typescript
 // 1.x
-import { Page, PageRenderPlugin } from "imean-service-engine";
+import { Page, PageRenderPlugin } from "nebula-engine";
 const service = new Microservice({
   plugins: [new PageRenderPlugin()],
 });
 
 // 2.x
-import { RoutePlugin, Page } from "imean-service-engine";
+import { RoutePlugin, Page } from "nebula-engine";
 const { Module } = Factory.create(new RoutePlugin());
 ```
 
@@ -1135,14 +1135,14 @@ const port = await engine.start(3000);
 以下功能在 2.x 版本中已被移除：
 
 - **WebSocket 支持**：1.x 版本中的 WebSocket 功能已移除
-- **startCheck**：启动前检查功能已整合到主包，可以直接从 `imean-service-engine` 导入
+- **startCheck**：启动前检查功能已整合到主包，可以直接从 `nebula-engine` 导入
 - **内置 PageRenderPlugin**：页面渲染功能已整合到 RoutePlugin 中
 
 ### 迁移步骤
 
 1. **更新依赖**：
    ```bash
-   npm install imean-service-engine@^2.0.0
+   npm install nebula-engine@^2.0.0
    ```
 
 2. **重构引擎创建**：

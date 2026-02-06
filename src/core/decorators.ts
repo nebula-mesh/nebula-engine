@@ -9,12 +9,12 @@ import { HandlerMetadata } from "./types";
 /**
  * Handler装饰器元数据键（方法）
  */
-const HANDLER_METADATA_KEY = Symbol.for("imean:handlerMetadata");
+const HANDLER_METADATA_KEY = Symbol.for("nebula:handlerMetadata");
 
 /**
  * Handler装饰器元数据键（属性）
  */
-const HANDLER_FIELD_METADATA_KEY = Symbol.for("imean:handlerFieldMetadata");
+const HANDLER_FIELD_METADATA_KEY = Symbol.for("nebula:handlerFieldMetadata");
 
 /**
  * 创建Handler装饰器（基于通用元数据工具）

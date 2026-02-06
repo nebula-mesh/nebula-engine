@@ -88,7 +88,7 @@ describe("通用元数据工具库", () => {
       const Config = createClassDecorator(Symbol.for("config"));
       const Cache = createClassDecorator(Symbol.for("cache"));
 
-      const moduleKey = Symbol.for("imean:classMetadata");
+      const moduleKey = Symbol.for("nebula:classMetadata");
       const configKey = Symbol.for("config");
       const cacheKey = Symbol.for("cache");
 
@@ -141,7 +141,7 @@ describe("通用元数据工具库", () => {
       const Module = createClassDecorator();
       const Config = createClassDecorator(Symbol.for("config"));
 
-      const moduleKey = Symbol.for("imean:classMetadata");
+      const moduleKey = Symbol.for("nebula:classMetadata");
       const configKey = Symbol.for("config");
 
       @Module({ name: "test-module" })
@@ -165,7 +165,7 @@ describe("通用元数据工具库", () => {
 
     it("方法装饰器也应该在类上注册 key", () => {
       const Handler = createMethodDecorator();
-      const methodKey = Symbol.for("imean:methodMetadata");
+      const methodKey = Symbol.for("nebula:methodMetadata");
 
       class TestService {
         @Handler({ type: "route" })
@@ -201,7 +201,7 @@ describe("通用元数据工具库", () => {
       const Module = createClassDecorator();
       const Config = createClassDecorator(Symbol.for("config"));
 
-      const moduleKey = Symbol.for("imean:classMetadata");
+      const moduleKey = Symbol.for("nebula:classMetadata");
       const configKey = Symbol.for("config");
 
       @Module({ name: "test" })
