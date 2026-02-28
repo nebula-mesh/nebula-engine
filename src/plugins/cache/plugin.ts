@@ -10,6 +10,7 @@ import {
 } from "../../core/types";
 import { CacheAdapter, MemoryCacheAdapter } from "./adapter";
 import { CacheModuleOptions } from "./types";
+import { RequestContext } from "../telemetry/context";
 
 /**
  * CachePlugin - 缓存插件
@@ -93,7 +94,7 @@ export class CachePlugin implements Plugin<CacheModuleOptions> {
   onHandlerLoad(handlers: HandlerMetadata[]): void {
     // 筛选出所有type="cache"的Handler元数据
     const cacheHandlers = handlers.filter(
-      (handler) => handler.type === "cache"
+      (handler) => handler.type === "cache",
     );
 
     logger.info(`Found ${cacheHandlers.length} cache handler(s)`);
@@ -141,18 +142,20 @@ export class CachePlugin implements Plugin<CacheModuleOptions> {
           moduleName,
           methodName,
           cacheOptions.key,
-          args
+          args,
         );
 
         // 检查缓存
         const cached = await this.adapter.get(cacheKey);
         if (cached) {
           logger.debug(`Cache hit for ${cacheKey}`);
+          RequestContext.setCacheInfo(true);
           return cached.value;
         }
 
         // 缓存未命中，调用下一个包装层或原始方法
         logger.debug(`Cache miss for ${cacheKey}`);
+        RequestContext.setCacheInfo(false);
         const result = await next();
 
         // 存储到缓存
@@ -166,7 +169,7 @@ export class CachePlugin implements Plugin<CacheModuleOptions> {
       });
 
       logger.info(
-        `Wrapped ${moduleClass.name}.${methodName} with cache (TTL: ${ttl}ms)`
+        `Wrapped ${moduleClass.name}.${methodName} with cache (TTL: ${ttl}ms)`,
       );
     }
   }
@@ -188,7 +191,7 @@ export class CachePlugin implements Plugin<CacheModuleOptions> {
       }, cleanupInterval);
 
       logger.info(
-        `Started cache cleanup timer (interval: ${cleanupInterval}ms)`
+        `Started cache cleanup timer (interval: ${cleanupInterval}ms)`,
       );
     }
   }
@@ -220,7 +223,7 @@ export class CachePlugin implements Plugin<CacheModuleOptions> {
     moduleName: string,
     methodName: string,
     keyFunction: ((...args: any[]) => any) | undefined,
-    args: any[]
+    args: any[],
   ): string {
     // 如果提供了 key 函数，使用它的返回值；否则使用 args
     const keyData = keyFunction ? keyFunction(...args) : args;

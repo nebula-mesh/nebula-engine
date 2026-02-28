@@ -2,6 +2,7 @@ import * as ejson from "ejson";
 import { Context } from "hono";
 import { Microservice } from "../../core/engine";
 import logger from "../../core/logger";
+import { nebulaId } from "../../core/nebula-id";
 import {
   HandlerMetadata,
   Plugin,
@@ -10,6 +11,7 @@ import {
 } from "../../core/types";
 import { ActionModuleOptions, ActionOptions } from "./types";
 import { buildActionPath, parseAndValidateParams } from "./utils";
+import { RequestContext, createTraceContext } from "../telemetry/context";
 
 /**
  * 检查对象是否是 AsyncIterable
@@ -59,7 +61,7 @@ export class ActionPlugin implements Plugin<ActionModuleOptions> {
   onHandlerLoad(handlers: HandlerMetadata[]): void {
     // 筛选出所有type="action"的Handler元数据
     const actionHandlers = handlers.filter(
-      (handler) => handler.type === "action"
+      (handler) => handler.type === "action",
     );
 
     logger.info(`Found ${actionHandlers.length} action handler(s)`);
@@ -73,7 +75,7 @@ export class ActionPlugin implements Plugin<ActionModuleOptions> {
       const moduleInstance = this.engine.get(moduleClass);
       if (!moduleInstance) {
         logger.warn(
-          `Module instance not found for ${moduleClass.name}, skipping action registration`
+          `Module instance not found for ${moduleClass.name}, skipping action registration`,
         );
         continue;
       }
@@ -84,7 +86,7 @@ export class ActionPlugin implements Plugin<ActionModuleOptions> {
         .find((m: any) => m.clazz === moduleClass);
       if (!moduleMetadata) {
         logger.warn(
-          `Module metadata not found for ${moduleClass.name}, skipping action registration`
+          `Module metadata not found for ${moduleClass.name}, skipping action registration`,
         );
         continue;
       }
@@ -96,7 +98,7 @@ export class ActionPlugin implements Plugin<ActionModuleOptions> {
       const actionPath = buildActionPath(
         enginePrefix,
         moduleMetadata.name,
-        methodName
+        methodName,
       );
 
       // 获取参数校验 schemas
@@ -194,7 +196,31 @@ export class ActionPlugin implements Plugin<ActionModuleOptions> {
             args.unshift(ctx);
           }
 
-          const result = await method.apply(moduleInstance, args);
+          // 创建追踪上下文并使用 RequestContext 运行方法
+          const headersRecord: Record<string, string> = {};
+          const headers = ctx.req.raw.headers;
+          if (headers) {
+            headers.forEach((value: string, key: string) => {
+              headersRecord[key] = value;
+            });
+          }
+
+          const traceContext = createTraceContext(headersRecord, () =>
+            nebulaId(),
+          );
+
+          const requestContext = {
+            trace: traceContext,
+            request: {
+              method: ctx.req.method,
+              path: actionPath,
+              headers: headersRecord,
+            },
+          };
+
+          const result = await RequestContext.run(requestContext, () =>
+            method.apply(moduleInstance, args),
+          );
 
           // 如果是流式返回（async generator），转换为 HTTP 流式响应（SSE 格式）
           if (actionOptions.stream) {
@@ -223,7 +249,7 @@ export class ActionPlugin implements Plugin<ActionModuleOptions> {
                     if (done) {
                       // 发送结束标记
                       controller.enqueue(
-                        encoder.encode(ejson.stringify({ done: true }))
+                        encoder.encode(ejson.stringify({ done: true })),
                       );
                       controller.close();
                       break;
@@ -231,7 +257,7 @@ export class ActionPlugin implements Plugin<ActionModuleOptions> {
                     // 发送数据块，每个 JSON 对象是完整的
                     // 客户端会使用 tryParseCompleteJson 来处理可能被合并的 chunk
                     controller.enqueue(
-                      encoder.encode(ejson.stringify({ value, done: false }))
+                      encoder.encode(ejson.stringify({ value, done: false })),
                     );
                   }
                 } catch (error) {
@@ -244,8 +270,8 @@ export class ActionPlugin implements Plugin<ActionModuleOptions> {
                             ? error.message
                             : String(error),
                         done: true,
-                      })
-                    )
+                      }),
+                    ),
                   );
                   controller.close();
                 }
@@ -267,7 +293,7 @@ export class ActionPlugin implements Plugin<ActionModuleOptions> {
             if (!returnValidation.success) {
               logger.error(
                 `Return value validation failed for ${moduleClass.name}.${methodName}`,
-                returnValidation.error
+                returnValidation.error,
               );
               const returnErrors = returnValidation.error.issues || [];
               const errorMessage = `Return value validation failed: ${returnErrors
@@ -309,7 +335,7 @@ export class ActionPlugin implements Plugin<ActionModuleOptions> {
         } catch (error) {
           logger.error(
             `Error in action handler ${moduleClass.name}.${methodName}`,
-            error
+            error,
           );
           const errorResponse = ejson.stringify({
             success: false,
@@ -342,7 +368,7 @@ export class ActionPlugin implements Plugin<ActionModuleOptions> {
       route.get(actionPath, actionHandler);
       route.post(actionPath, actionHandler);
       logger.info(
-        `[注册动作] ${moduleClass.name}.${methodName} ${actionOptions.description}`
+        `[注册动作] ${moduleClass.name}.${methodName} ${actionOptions.description}`,
       );
     }
   }
