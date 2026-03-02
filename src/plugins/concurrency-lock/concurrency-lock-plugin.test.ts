@@ -76,6 +76,169 @@ describe("ConcurrencyLockPlugin", () => {
 
       expect(result).toEqual({ id: "123", type: "A" });
     });
+
+    it("应该支持复杂对象参数", async () => {
+      const UserSchema = z.object({
+        id: z.string(),
+        name: z.string(),
+        profile: z.object({
+          email: z.string().email(),
+          age: z.number(),
+        }),
+      });
+
+      @Module("test-service")
+      class TestService {
+        @ConcurrencyLock({
+          timeout: 5000,
+        })
+        @Action({
+          params: [UserSchema],
+        })
+        async createUser(
+          user: z.infer<typeof UserSchema>,
+        ): Promise<{ id: string; name: string }> {
+          return { id: user.id, name: user.name };
+        }
+      }
+
+      const handler = engine.handler(TestService, "createUser");
+      const result = await handler({
+        id: "123",
+        name: "Alice",
+        profile: {
+          email: "alice@example.com",
+          age: 25,
+        },
+      });
+
+      expect(result).toEqual({ id: "123", name: "Alice" });
+    });
+
+    it("应该支持数组参数", async () => {
+      @Module("test-service")
+      class TestService {
+        @ConcurrencyLock({
+          timeout: 5000,
+        })
+        @Action({
+          params: [z.array(z.string())],
+        })
+        async processIds(ids: string[]): Promise<{ count: number }> {
+          return { count: ids.length };
+        }
+      }
+
+      const handler = engine.handler(TestService, "processIds");
+      const result = await handler(["a", "b", "c"]);
+
+      expect(result).toEqual({ count: 3 });
+    });
+
+    it("应该支持嵌套数组参数", async () => {
+      const OrderItemSchema = z.object({
+        productId: z.string(),
+        quantity: z.number(),
+      });
+
+      const OrderSchema = z.object({
+        orderId: z.string(),
+        items: z.array(OrderItemSchema),
+        total: z.number(),
+      });
+
+      @Module("test-service")
+      class TestService {
+        @ConcurrencyLock({
+          timeout: 5000,
+        })
+        @Action({
+          params: [OrderSchema],
+        })
+        async processOrder(
+          order: z.infer<typeof OrderSchema>,
+        ): Promise<{ orderId: string; itemCount: number }> {
+          return { orderId: order.orderId, itemCount: order.items.length };
+        }
+      }
+
+      const handler = engine.handler(TestService, "processOrder");
+      const result = await handler({
+        orderId: "ORD-001",
+        items: [
+          { productId: "P1", quantity: 2 },
+          { productId: "P2", quantity: 1 },
+        ],
+        total: 100,
+      });
+
+      expect(result).toEqual({ orderId: "ORD-001", itemCount: 2 });
+    });
+
+    it("不同复杂参数应该生成不同的锁", async () => {
+      const executions: string[] = [];
+
+      @Module("test-service")
+      class TestService {
+        @ConcurrencyLock({
+          timeout: 5000,
+        })
+        @Action({
+          params: [z.object({ id: z.string(), type: z.string() })],
+        })
+        async processData(data: { id: string; type: string }): Promise<string> {
+          executions.push(`start-${data.id}-${data.type}`);
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          executions.push(`end-${data.id}-${data.type}`);
+          return `${data.id}-${data.type}`;
+        }
+      }
+
+      const handler = engine.handler(TestService, "processData");
+
+      // 触发两个不同的参数
+      const [result1, result2] = await Promise.all([
+        handler({ id: "123", type: "A" }),
+        handler({ id: "456", type: "B" }),
+      ]);
+
+      expect(result1).toBe("123-A");
+      expect(result2).toBe("456-B");
+    });
+
+    it("相同复杂参数应该使用相同的锁", async () => {
+      let executionCount = 0;
+
+      @Module("test-service")
+      class TestService {
+        @ConcurrencyLock({
+          timeout: 5000,
+        })
+        @Action({
+          params: [z.object({ id: z.string(), tags: z.array(z.string()) })],
+        })
+        async processData(data: {
+          id: string;
+          tags: string[];
+        }): Promise<number> {
+          executionCount++;
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          return executionCount;
+        }
+      }
+
+      const handler = engine.handler(TestService, "processData");
+
+      // 触发两个相同的参数
+      const [result1, result2] = await Promise.all([
+        handler({ id: "123", tags: ["a", "b"] }),
+        handler({ id: "123", tags: ["a", "b"] }),
+      ]);
+
+      // 由于相同参数共用锁，第二个请求会等待后执行，所以计数是 2
+      expect(result1).toBe(1);
+      expect(result2).toBe(2);
+    });
   });
 
   describe("并发锁功能", () => {
@@ -348,17 +511,16 @@ describe("RedisLockAdapter", () => {
       async set(
         key: string,
         value: string,
-        expiryMode?: string,
-        time?: number,
+        mode: string,
+        ttl: number,
       ): Promise<string | null> {
-        // NX 模式：只在 key 不存在时设置
-        if (expiryMode === "NX") {
+        // ioredis 格式: set(key, value, "NX", ttl)
+        if (mode === "NX") {
           if (this.storage.has(key)) {
             return null;
           }
         }
-        const expiresAt =
-          expiryMode === "EX" && time ? Date.now() + time * 1000 : undefined;
+        const expiresAt = ttl ? Date.now() + ttl * 1000 : undefined;
         this.storage.set(key, { value, expiresAt });
         return "OK";
       },

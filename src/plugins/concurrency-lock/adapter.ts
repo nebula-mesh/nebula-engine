@@ -163,6 +163,7 @@ export class MemoryLockAdapter implements LockAdapter {
 /**
  * Redis 锁适配器
  * 使用 SET NX EX 实现分布式锁
+ * 支持 ioredis 客户端
  */
 export class RedisLockAdapter implements LockAdapter {
   private client: RedisLockAdapterOptions["client"];
@@ -186,7 +187,7 @@ export class RedisLockAdapter implements LockAdapter {
     const owner = generateHash({ key, timestamp: Date.now() });
     const value = ejson.stringify({ owner, expiresAt: Date.now() + ttl });
 
-    // SET key value NX EX ttl - 原子操作
+    // ioredis: set(key, value, "NX", ttl)
     const result = await this.client.set(
       redisKey,
       value,

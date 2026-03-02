@@ -3,21 +3,22 @@ import * as ejson from "ejson";
 
 /**
  * 生成并发锁的 key
- * 格式：concurrency:{moduleName}:{methodName}:{hash}
+ * 格式：{moduleName}:{methodName}:{hash}
+ * 注意：不包含前缀，前缀由适配器添加
  *
  * @param moduleName 模块名
  * @param methodName 方法名
  * @param args 方法参数
  * @param keyFunction 可选的自定义 key 生成函数
- * @returns 完整的锁 key
+ * @returns 锁 key（不含前缀）
  *
  * @example
  * ```typescript
  * generateLockKey("article", "getDetailOrGenerate", ["123"], undefined)
- * // => "concurrency:article:getDetailOrGenerate:a1b2c3d4..."
+ * // => "article:getDetailOrGenerate:a1b2c3d4..."
  *
  * generateLockKey("article", "getDetailOrGenerate", ["123", { draft: true }], (id, opts) => ({ id }))
- * // => "concurrency:article:getDetailOrGenerate:e5f6g7h8..."
+ * // => "article:getDetailOrGenerate:e5f6g7h8..."
  * ```
  */
 export function generateLockKey(
@@ -38,8 +39,8 @@ export function generateLockKey(
     .digest("hex")
     .substring(0, 16);
 
-  // 返回格式：concurrency:模块名:方法名:hash
-  return `concurrency:${moduleName}:${methodName}:${hash}`;
+  // 返回格式：模块名:方法名:hash（不含前缀）
+  return `${moduleName}:${methodName}:${hash}`;
 }
 
 /**

@@ -97,12 +97,7 @@ export interface RedisLockAdapterOptions {
    * 支持 ioredis、node-redis 等
    */
   client: {
-    set(
-      key: string,
-      value: string,
-      expiryMode?: string,
-      time?: number,
-    ): Promise<string | null>;
+    set(key: string, value: string, ...args: any[]): Promise<string | null>;
     get(key: string): Promise<string | null>;
     del(key: string): Promise<number>;
     keys(pattern: string): Promise<string[]>;
