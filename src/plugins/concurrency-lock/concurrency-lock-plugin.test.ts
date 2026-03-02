@@ -1,4 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it
+} from "vitest";
 import { z } from "zod";
 import { Testing } from "../../core/testing";
 import { Action, ActionPlugin } from "../action";
@@ -220,87 +228,129 @@ describe("MemoryLockAdapter", () => {
 
 describe("RedisLockAdapter", () => {
   let adapter: RedisLockAdapter;
-  let mockRedis: {
-    set: ReturnType<typeof vi.fn>;
-    get: ReturnType<typeof vi.fn>;
-    del: ReturnType<typeof vi.fn>;
-    ttl: ReturnType<typeof vi.fn>;
-    eval: ReturnType<typeof vi.fn>;
-  };
+  let redisClient: any;
+  let redisAvailable = false;
 
-  beforeEach(() => {
-    mockRedis = {
-      set: vi.fn().mockResolvedValue("OK"),
-      get: vi.fn().mockResolvedValue(null),
-      del: vi.fn().mockResolvedValue(1),
-      ttl: vi.fn().mockResolvedValue(5000),
-      eval: vi.fn().mockResolvedValue(1),
-    };
+  beforeAll(async () => {
+    try {
+      const Redis = require("ioredis");
+      const password = process.env.REDIS_PASSWORD || undefined;
+      redisClient = new Redis({
+        host: process.env.REDIS_HOST || "localhost",
+        port: parseInt(process.env.REDIS_PORT || "6379"),
+        password,
+        lazyConnect: true,
+        maxRetriesPerRequest: 1,
+        connectTimeout: 3000,
+      });
 
-    adapter = new RedisLockAdapter({ client: mockRedis as any });
+      await redisClient.connect();
+      await redisClient.ping();
+      redisAvailable = true;
+    } catch (e) {
+      redisClient = null;
+      redisAvailable = false;
+    }
   });
 
+  afterAll(async () => {
+    if (redisClient) {
+      try {
+        await redisClient.quit();
+      } catch { }
+    }
+  });
+
+  beforeEach(async () => {
+    if (!redisAvailable || !redisClient) {
+      return;
+    }
+    try {
+      await redisClient.flushdb();
+      adapter = new RedisLockAdapter({ client: redisClient });
+    } catch {
+      redisAvailable = false;
+    }
+  });
+
+  afterEach(async () => {
+    if (redisAvailable && redisClient) {
+      try {
+        await redisClient.flushdb();
+      } catch { }
+    }
+  });
+
+  const skipIfNoRedis = function () {
+    if (!redisAvailable) {
+      return true;
+    }
+    return false;
+  };
+
   it("应该能够获取和释放锁", async () => {
+    if (skipIfNoRedis()) return;
+
     const acquired = await adapter.acquire("redis-key", 5000);
     expect(acquired).toBe(true);
-    expect(mockRedis.set).toHaveBeenCalled();
 
-    const callArgs = mockRedis.set.mock.calls[0];
-    expect(callArgs[0]).toBe("concurrency:redis-key");
-    expect(callArgs[2]).toBe("NX");
-    expect(callArgs[3]).toBe(5); // 5000ms = 5s
+    const isLocked = await adapter.isLocked("redis-key");
+    expect(isLocked).toBe(true);
 
     const released = await adapter.release("redis-key");
     expect(released).toBe(true);
-    expect(mockRedis.eval).toHaveBeenCalled();
+
+    const isLocked2 = await adapter.isLocked("redis-key");
+    expect(isLocked2).toBe(false);
   });
 
   it("应该正确检测锁状态", async () => {
-    mockRedis.get.mockResolvedValue(null);
+    if (skipIfNoRedis()) return;
+
     expect(await adapter.isLocked("redis-key")).toBe(false);
 
-    const futureExpiry = JSON.stringify({
-      expiresAt: Date.now() + 10000,
-      owner: "test",
-    });
-    mockRedis.get.mockResolvedValue(futureExpiry);
+    await adapter.acquire("redis-key", 5000);
     expect(await adapter.isLocked("redis-key")).toBe(true);
   });
 
   it("过期锁应该自动清理", async () => {
-    mockRedis.ttl.mockResolvedValue(-2);
+    if (skipIfNoRedis()) return;
+
     await adapter.acquire("redis-key", 100);
+    expect(await adapter.isLocked("redis-key")).toBe(true);
+
     await new Promise((resolve) => setTimeout(resolve, 150));
 
-    const isLocked = await adapter.isLocked("redis-key");
-    expect(isLocked).toBe(false);
+    expect(await adapter.isLocked("redis-key")).toBe(false);
   });
 
   it("waitForUnlock 应该等待锁释放", async () => {
-    let resolveGet: (value: string | null) => void;
-    mockRedis.get.mockImplementation(() => {
-      return new Promise((resolve) => {
-        resolveGet = resolve;
-      });
-    });
+    if (skipIfNoRedis()) return;
+
+    await adapter.acquire("redis-key", 5000);
 
     const waitPromise = adapter.waitForUnlock("redis-key", 5000, 5000);
 
-    setTimeout(() => resolveGet!(null), 50);
+    await adapter.release("redis-key");
 
     const result = await waitPromise;
     expect(result).toBe(true);
   });
 
   it("waitForUnlock 应该处理过期锁", async () => {
-    mockRedis.get.mockResolvedValue(null);
+    if (skipIfNoRedis()) return;
 
-    const result = await adapter.waitForUnlock("redis-key", 100, 100);
+    await adapter.acquire("redis-key", 50);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    const result = await adapter.waitForUnlock("redis-key", 5000, 5000);
     expect(result).toBe(true);
   });
 
   it("waitForUnlock 超时后应该兜底返回 true", async () => {
-    mockRedis.get.mockResolvedValue("locked");
+    if (skipIfNoRedis()) return;
+
+    await adapter.acquire("redis-key", 10000);
 
     const result = await adapter.waitForUnlock("redis-key", 100, 100);
     expect(result).toBe(true);

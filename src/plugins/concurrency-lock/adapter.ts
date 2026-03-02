@@ -187,12 +187,13 @@ export class RedisLockAdapter implements LockAdapter {
     const owner = generateHash({ key, timestamp: Date.now() });
     const value = ejson.stringify({ owner, expiresAt: Date.now() + ttl });
 
-    // ioredis: set(key, value, "NX", ttl)
+    // ioredis: set(key, value, 'EX', ttl, 'NX')
     const result = await this.client.set(
       redisKey,
       value,
-      "NX",
+      "EX",
       Math.ceil(ttl / 1000),
+      "NX",
     );
 
     return result !== null;
@@ -215,7 +216,8 @@ export class RedisLockAdapter implements LockAdapter {
       return 0
     `;
 
-    const result = await this.client.eval(script, 1, redisKey);
+    // ioredis: eval(script, numberOfKeys, key1, key2, ...)
+    const result = await (this.client.eval as any)(script, 1, redisKey);
     return result === 1 || result === true;
   }
 
