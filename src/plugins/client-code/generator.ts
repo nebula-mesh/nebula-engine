@@ -7,7 +7,7 @@ import type { ModuleInfo } from "./types";
  */
 export function getZodTypeString(
   schema: z.ZodType<any>,
-  defaultOptional: boolean = false
+  defaultOptional: boolean = false,
 ): string {
   // 递归处理可空和可选类型
   function processType(type: z.ZodType<any>): string {
@@ -76,7 +76,7 @@ export function getZodTypeString(
             const isOptional = fieldTypeName === "optional";
             const isDefault = defaultOptional && fieldTypeName === "default";
             const fieldType = processType(
-              isOptional ? fieldDef.innerType : value
+              isOptional ? fieldDef.innerType : value,
             );
             return `${key}${isOptional || isDefault ? "?" : ""}: ${fieldType}`;
           })
@@ -112,7 +112,7 @@ export function getZodTypeString(
       }
       case "map": {
         return `Map<${processType(def.keyType)}, ${processType(
-          def.valueType
+          def.valueType,
         )}>`;
       }
       case "any": {
@@ -151,7 +151,7 @@ export function getZodTypeString(
  * @returns 生成的客户端代码
  */
 export async function generateClientCode(
-  modules: Record<string, ModuleInfo>
+  modules: Record<string, ModuleInfo>,
 ): Promise<string> {
   const imports = [
     "// 这个文件是自动生成的，请不要手动修改",
@@ -188,6 +188,7 @@ export async function generateClientCode(
   }
 
   const interfaces = Object.entries(modules)
+    .filter(([_, module]) => Object.keys(module.actions).length > 0)
     .map(([name, module]) => {
       const methods = Object.entries(module.actions)
         .map(([actionName, action]) => {
@@ -201,16 +202,14 @@ export async function generateClientCode(
           const params = action.params
             .map((param: z.ZodType<any>, index: any) => {
               const paramName =
-                paramNames[index] ||
-                param.description ||
-                `arg${index}`;
+                paramNames[index] || param.description || `arg${index}`;
               // 检查参数是否可选或有默认值
               const paramDef = (param as any)._def as any;
               const isOptional = param.isOptional();
               const hasDefault = paramDef?.type === "default";
               return `${paramName}${isOptional || hasDefault ? "?" : ""}: ${getZodTypeString(
                 param,
-                true
+                true,
               )}`;
             })
             .join(", ");
@@ -242,6 +241,7 @@ export async function generateClientCode(
   }
 
   ${Object.entries(modules)
+    .filter(([_, module]) => Object.keys(module.actions).length > 0)
     .map(([name, module]) => {
       const methods = Object.entries(module.actions)
         .map(([actionName, action]) => {

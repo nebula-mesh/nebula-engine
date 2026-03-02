@@ -69,9 +69,7 @@ describe("ClientCodePlugin", () => {
 
       // 测试客户端代码路由
       const port = engine.getPort();
-      const response = await fetch(
-        `http://localhost:${port}/client.ts`
-      );
+      const response = await fetch(`http://localhost:${port}/client.ts`);
 
       expect(response.status).toBe(200);
       expect(response.headers.get("content-type")).toContain("text/typescript");
@@ -108,9 +106,7 @@ describe("ClientCodePlugin", () => {
       await testEngine.engine.start();
 
       const port = testEngine.engine.getPort();
-      const response = await fetch(
-        `http://localhost:${port}/api/client.ts`
-      );
+      const response = await fetch(`http://localhost:${port}/api/client.ts`);
 
       expect(response.status).toBe(200);
       const code = await response.text();
@@ -338,6 +334,48 @@ describe("ClientCodePlugin", () => {
 
       await engine.stop();
     });
+
+    it("应该过滤掉没有 Action 的模块", async () => {
+      @Module("user-service")
+      class UserService {
+        @Action({
+          description: "创建用户",
+          params: [z.string()],
+          returns: z.string(),
+        })
+        createUser(name: string) {
+          return name;
+        }
+      }
+
+      @Module("empty-service")
+      class EmptyService {
+        // 没有 Action 方法
+        regularMethod() {
+          return "test";
+        }
+      }
+
+      await engine.start();
+
+      const port = engine.getPort();
+      const response = await fetch(`http://localhost:${port}/client.ts`);
+      const code = await response.text();
+
+      // 应该包含有 Action 的模块
+      expect(code).toContain("export interface UserServiceModule");
+      expect(code).toContain("public readonly userService");
+      expect(code).toContain("createUser");
+
+      // 不应该包含没有 Action 的模块（过滤掉了）
+      expect(code).not.toContain("EmptyService");
+      expect(code).not.toContain("empty-service");
+      expect(code).not.toContain("emptyService");
+      expect(code).not.toContain("export interface EmptyServiceModule");
+      expect(code).not.toContain("public readonly emptyService");
+
+      await engine.stop();
+    });
   });
 
   describe("路由功能", () => {
@@ -361,7 +399,7 @@ describe("ClientCodePlugin", () => {
 
       expect(response.headers.get("content-type")).toContain("text/typescript");
       expect(response.headers.get("content-disposition")).toContain(
-        'filename="client.ts"'
+        'filename="client.ts"',
       );
 
       await engine.stop();
@@ -439,7 +477,7 @@ describe("ClientCodePlugin", () => {
         process.cwd(),
         "test-generated",
         "nested",
-        "client.ts"
+        "client.ts",
       );
 
       const testEngine = Testing.createTestEngine({
@@ -472,9 +510,9 @@ describe("ClientCodePlugin", () => {
 
       // 清理测试文件和目录
       await fs.unlink(savePath).catch(() => {});
-      await fs.rmdir(join(process.cwd(), "test-generated", "nested")).catch(
-        () => {}
-      );
+      await fs
+        .rmdir(join(process.cwd(), "test-generated", "nested"))
+        .catch(() => {});
       await fs.rmdir(join(process.cwd(), "test-generated")).catch(() => {});
 
       await testEngine.engine.stop();
@@ -508,4 +546,3 @@ describe("ClientCodePlugin", () => {
     });
   });
 });
-
