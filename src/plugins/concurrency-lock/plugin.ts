@@ -4,7 +4,6 @@ import {
   HandlerMetadata,
   Plugin,
   PluginModuleOptionsSchema,
-  PluginPriority,
 } from "../../core/types";
 import { ConcurrencyLockModuleOptions, ConcurrencyLockOptions } from "./types";
 import { LockAdapter, MemoryLockAdapter, RedisLockAdapter } from "./adapter";
@@ -52,7 +51,7 @@ export class ConcurrencyLockTimeoutError extends Error {
  */
 export class ConcurrencyLockPlugin implements Plugin<ConcurrencyLockModuleOptions> {
   public readonly name = "concurrency-lock-plugin";
-  public readonly priority = PluginPriority.PERFORMANCE;
+  public readonly priority = 500; // 在 Cache (400) 之后执行，缓存未命中才加锁
 
   private adapter: LockAdapter;
   private engine: Microservice | null = null;
