@@ -41,6 +41,9 @@ export * from "./plugins/dynamic-config";
 // Telemetry插件
 export * from "./plugins/telemetry";
 
+// 并发锁插件
+export * from "./plugins/concurrency-lock";
+
 // 便捷导出：引擎创建函数（仅通过 Factory 创建）
 export { Factory } from "./core/factory";
 export type { MicroserviceOptions } from "./core/types";
