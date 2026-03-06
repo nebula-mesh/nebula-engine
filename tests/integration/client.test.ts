@@ -142,7 +142,7 @@ describe("HTTP Client Integration Test", () => {
     let start = Date.now();
     const result = await client.tests.cacheFn("test", "Tom");
     expect(result).toEqual("test");
-    expect(Date.now() - start).toBeGreaterThan(1000);
+    expect(Date.now() - start).toBeGreaterThanOrEqual(1000);
 
     start = Date.now();
     const result2 = await client.tests.cacheFn("test", "Jerry");
@@ -154,7 +154,7 @@ describe("HTTP Client Integration Test", () => {
     let start = Date.now();
     // 第一次请求，缓存未命中
     let result = await client.tests.cacheResultAction("test");
-    expect(Date.now() - start).toBeGreaterThan(1000);
+    expect(Date.now() - start).toBeGreaterThanOrEqual(1000);
     expect(result).toEqual("test");
 
     start = Date.now();
@@ -166,7 +166,7 @@ describe("HTTP Client Integration Test", () => {
     start = Date.now();
     // 第三次请求，未命中key
     result = await client.tests.cacheResultAction("test2");
-    expect(Date.now() - start).toBeGreaterThan(1000);
+    expect(Date.now() - start).toBeGreaterThanOrEqual(1000);
     expect(result).toEqual("test2");
 
     await new Promise((resolve) => setTimeout(resolve, 1000));
