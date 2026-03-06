@@ -134,13 +134,15 @@ export class ConcurrencyLockPlugin implements Plugin<ConcurrencyLockModuleOption
       // 确定超时时间
       const timeout = lockOptions.timeout ?? moduleDefaultTimeout;
 
-      // 获取模块名
+      // 获取服务名和模块名
+      const serviceName = this.engine?.options.name || "default";
       const moduleName = moduleMetadata.name;
 
       // 使用 wrap API 包装方法
       handler.wrap(async (next, instance, ...args) => {
-        // 生成锁 key（精确到模块 + 方法 + 参数 hash）
+        // 生成锁 key（精确到服务 + 模块 + 方法 + 参数 hash）
         const lockKey = generateLockKey(
+          serviceName,
           moduleName,
           methodName,
           args,
@@ -148,35 +150,29 @@ export class ConcurrencyLockPlugin implements Plugin<ConcurrencyLockModuleOption
         );
 
         // 尝试获取锁
-        const acquired = await this.adapter.acquire(lockKey, timeout);
+        let acquired = await this.adapter.acquire(lockKey, timeout);
 
-        if (acquired) {
-          // 获取锁成功，执行方法后释放锁
-          try {
-            return await next();
-          } finally {
-            await this.adapter.release(lockKey);
+        // 如果获取失败，无限等待直到获取到锁
+        while (!acquired) {
+          // 等待锁释放
+          await this.adapter.waitForUnlock(lockKey, timeout, timeout);
+          
+          // 尝试获取锁
+          acquired = await this.adapter.acquire(lockKey, timeout);
+          
+          if (!acquired) {
+            // 被其他请求抢走了，继续等待
+            // 等待一小段时间后重试，避免 CPU 空转
+            await new Promise(resolve => setTimeout(resolve, 50));
           }
         }
 
-        // 获取锁失败，等待锁释放
-        // 使用超时兜底：等待超时后直接执行（不再加锁）
-        const waited = await this.adapter.waitForUnlock(
-          lockKey,
-          timeout,
-          timeout,
-        );
-
-        if (!waited) {
-          // 等待超时，抛出错误
-          logger.warn(
-            `Concurrency lock wait timeout for ${moduleName}.${methodName}, proceeding anyway`,
-          );
+        // 获取锁成功，执行方法后释放锁
+        try {
+          return await next();
+        } finally {
+          await this.adapter.release(lockKey);
         }
-
-        // 锁已释放或等待超时，直接执行（不再加锁）
-        // 此时资源应该已生成，直接返回结果
-        return await next();
       });
 
       logger.info(

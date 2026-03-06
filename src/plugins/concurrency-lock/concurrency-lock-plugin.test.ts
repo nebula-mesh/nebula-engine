@@ -220,9 +220,10 @@ describe("MemoryLockAdapter", () => {
     expect(result).toBe(true);
   });
 
-  it("waitForUnlock 超时后应该兜底返回 true", async () => {
-    const result = await adapter.waitForUnlock("non-existent-key", 100, 100);
-    expect(result).toBe(true);
+  it("waitForUnlock 超时后应该返回 false", async () => {
+    await adapter.acquire("test-key", 10000);
+    const result = await adapter.waitForUnlock("test-key", 100, 100);
+    expect(result).toBe(false);
   });
 });
 
@@ -347,12 +348,12 @@ describe("RedisLockAdapter", () => {
     expect(result).toBe(true);
   });
 
-  it("waitForUnlock 超时后应该兜底返回 true", async () => {
+  it("waitForUnlock 超时后应该返回 false", async () => {
     if (skipIfNoRedis()) return;
 
     await adapter.acquire("redis-key", 10000);
 
     const result = await adapter.waitForUnlock("redis-key", 100, 100);
-    expect(result).toBe(true);
+    expect(result).toBe(false);
   });
 });

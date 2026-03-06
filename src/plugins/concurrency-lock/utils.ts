@@ -3,9 +3,10 @@ import * as ejson from "ejson";
 
 /**
  * 生成并发锁的 key
- * 格式：{moduleName}:{methodName}:{hash}
+ * 格式：{serviceName}:{moduleName}:{methodName}:{hash}
  * 注意：不包含前缀，前缀由适配器添加
  *
+ * @param serviceName 服务名（避免不同服务间 key 冲突）
  * @param moduleName 模块名
  * @param methodName 方法名
  * @param args 方法参数
@@ -14,14 +15,12 @@ import * as ejson from "ejson";
  *
  * @example
  * ```typescript
- * generateLockKey("article", "getDetailOrGenerate", ["123"], undefined)
- * // => "article:getDetailOrGenerate:a1b2c3d4..."
- *
- * generateLockKey("article", "getDetailOrGenerate", ["123", { draft: true }], (id, opts) => ({ id }))
- * // => "article:getDetailOrGenerate:e5f6g7h8..."
+ * generateLockKey("user-service", "article", "getDetailOrGenerate", ["123"], undefined)
+ * // => "user-service:article:getDetailOrGenerate:a1b2c3d4..."
  * ```
  */
 export function generateLockKey(
+  serviceName: string,
   moduleName: string,
   methodName: string,
   args: any[],
@@ -33,14 +32,14 @@ export function generateLockKey(
   // 使用 ejson 序列化（支持更多数据类型）
   const serialized = ejson.stringify(keyData);
 
-  // 生成 hash（使用 SHA256，取前 16 位）
+  // 生成 hash（使用 SHA256，取前 32 位以提高安全性）
   const hash = createHash("sha256")
     .update(serialized)
     .digest("hex")
-    .substring(0, 16);
+    .substring(0, 32);
 
-  // 返回格式：模块名:方法名:hash（不含前缀）
-  return `${moduleName}:${methodName}:${hash}`;
+  // 返回格式：服务名:模块名:方法名:hash（不含前缀）
+  return `${serviceName}:${moduleName}:${methodName}:${hash}`;
 }
 
 /**

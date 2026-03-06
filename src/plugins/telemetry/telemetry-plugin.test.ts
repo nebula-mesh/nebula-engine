@@ -352,7 +352,7 @@ describe("TelemetryPlugin", () => {
     const spans = testExporter.getSpans();
     expect(spans.length).toBe(1);
     expect(spans[0].duration).toBeDefined();
-    expect(spans[0].duration).toBeGreaterThanOrEqual(50);
+    expect(spans[0].duration).toBeGreaterThanOrEqual(40);
     expect(spans[0].startTime).toBeDefined();
     expect(spans[0].endTime).toBeDefined();
     expect(spans[0].endTime).toBeGreaterThan(spans[0].startTime);

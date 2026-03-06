@@ -100,23 +100,15 @@ export class MemoryLockAdapter implements LockAdapter {
       // 1. 检查锁是否还存在
       const locked = await this.isLocked(key);
       if (!locked) {
-        // 锁已释放，尝试获取
-        const acquired = await this.acquire(key, lockTtl);
-        if (acquired) {
-          return true;
-        }
-        // 被其他请求抢走了，继续等待
+        // 锁已释放，可以尝试获取了
+        return true;
       }
 
       // 2. 检查锁是否已过期（持有者崩溃）
       const expired = await this.isExpired(key);
       if (expired) {
-        // 锁已过期，尝试偷取
-        const stolen = await this.acquire(key, lockTtl);
-        if (stolen) {
-          return true;
-        }
-        // 被其他请求抢走了，继续等待
+        // 锁已过期，可以尝试获取了
+        return true;
       }
 
       // 3. 随机退避，避免惊群
@@ -124,8 +116,8 @@ export class MemoryLockAdapter implements LockAdapter {
       await sleep(delay);
     }
 
-    // 4. 等待超时，兜底放行（不再加锁）
-    return true;
+    // 4. 等待超时，返回 false
+    return false;
   }
 
   /**
@@ -277,7 +269,9 @@ export class RedisLockAdapter implements LockAdapter {
   }
 
   /**
-   * 等待锁释放，包含过期检测和偷取机制
+   * 等待锁释放，包含过期检测
+   * 注意：此方法只负责等待，不尝试获取锁
+   * 调用者需要在返回 true 后自行获取锁
    */
   async waitForUnlock(
     key: string,
@@ -290,23 +284,15 @@ export class RedisLockAdapter implements LockAdapter {
       // 1. 检查锁是否还存在
       const locked = await this.isLocked(key);
       if (!locked) {
-        // 锁已释放，尝试获取
-        const acquired = await this.acquire(key, lockTtl);
-        if (acquired) {
-          return true;
-        }
-        // 被其他请求抢走了，继续等待
+        // 锁已释放，可以尝试获取了
+        return true;
       }
 
       // 2. 检查锁是否已过期（持有者崩溃）
       const expired = await this.isExpired(key);
       if (expired) {
-        // 锁已过期，尝试偷取
-        const stolen = await this.acquire(key, lockTtl);
-        if (stolen) {
-          return true;
-        }
-        // 被其他请求抢走了，继续等待
+        // 锁已过期，可以尝试获取了
+        return true;
       }
 
       // 3. 随机退避，避免惊群
@@ -314,8 +300,8 @@ export class RedisLockAdapter implements LockAdapter {
       await sleep(delay);
     }
 
-    // 4. 等待超时，兜底放行（不再加锁）
-    return true;
+    // 4. 等待超时，返回 false
+    return false;
   }
 
   /**
