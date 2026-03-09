@@ -160,10 +160,12 @@ export class MemoryLockAdapter implements LockAdapter {
 export class RedisLockAdapter implements LockAdapter {
   private client: RedisLockAdapterOptions["client"];
   private keyPrefix: string;
+  private ownerId: string;
 
   constructor(options: RedisLockAdapterOptions) {
     this.client = options.client;
     this.keyPrefix = options.keyPrefix || "concurrency:";
+    this.ownerId = generateHash({ timestamp: Date.now(), random: Math.random() });
   }
 
   private getKey(key: string): string {
@@ -176,8 +178,7 @@ export class RedisLockAdapter implements LockAdapter {
    */
   async acquire(key: string, ttl: number): Promise<boolean> {
     const redisKey = this.getKey(key);
-    const owner = generateHash({ key, timestamp: Date.now() });
-    const value = ejson.stringify({ owner, expiresAt: Date.now() + ttl });
+    const value = ejson.stringify({ owner: this.ownerId, expiresAt: Date.now() + ttl });
 
     // ioredis: set(key, value, 'EX', ttl, 'NX')
     const result = await this.client.set(
@@ -202,14 +203,17 @@ export class RedisLockAdapter implements LockAdapter {
     const script = `
       local val = redis.call('GET', KEYS[1])
       if val then
-        redis.call('DEL', KEYS[1])
-        return 1
+        local lockData = cjson.decode(val)
+        if lockData.owner == ARGV[1] then
+          redis.call('DEL', KEYS[1])
+          return 1
+        end
       end
       return 0
     `;
 
-    // ioredis: eval(script, numberOfKeys, key1, key2, ...)
-    const result = await (this.client.eval as any)(script, 1, redisKey);
+    // ioredis: eval(script, numberOfKeys, key1, key2, ..., arg1, arg2, ...)
+    const result = await (this.client.eval as any)(script, 1, redisKey, this.ownerId);
     return result === 1 || result === true;
   }
 
