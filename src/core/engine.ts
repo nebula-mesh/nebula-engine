@@ -1,4 +1,5 @@
 import { serve } from "@hono/node-server";
+import { httpInstrumentationMiddleware } from "@hono/otel";
 import { Hono } from "hono";
 import * as net from "net";
 import { getClassesByKey, getClassMetadata } from "../metadata/metadata";
@@ -52,6 +53,7 @@ export class Microservice<ModuleOptions = Record<string, any>> {
       ...options,
     });
     this.moduleMetadataKey = moduleMetadataKey;
+    this.hono.use(httpInstrumentationMiddleware());
   }
 
   /**
@@ -277,7 +279,7 @@ export class Microservice<ModuleOptions = Record<string, any>> {
       // 6. 标记为已启动
       this.started = true;
       logger.info(
-        `${this.options.name} v${this.options.version} started successfully on port ${this.actualPort}`
+        `${this.options.name} v${this.options.version} started successfully on port ${this.actualPort}`,
       );
 
       return this.actualPort!;
@@ -291,7 +293,7 @@ export class Microservice<ModuleOptions = Record<string, any>> {
    * 确定实际使用的端口
    */
   private async determinePort(
-    requestedPort: number
+    requestedPort: number,
   ): Promise<{ port: number; hostname: string }> {
     const hostname = this.options.hostname || "0.0.0.0";
 
@@ -322,7 +324,7 @@ export class Microservice<ModuleOptions = Record<string, any>> {
     // 执行插件 onModuleLoad
     this.executePluginHook("onModuleLoad", (plugin) => {
       plugin.onModuleLoad?.(
-        this.modules as ModuleMetadata<Record<string, any>>[]
+        this.modules as ModuleMetadata<Record<string, any>>[],
       );
     });
   }
@@ -347,7 +349,7 @@ export class Microservice<ModuleOptions = Record<string, any>> {
       (plugin) => {
         plugin.onHandlerLoad?.(handlers);
       },
-      wrapperPlugins
+      wrapperPlugins,
     );
 
     // 应用所有包装链到原型（在所有包装插件执行完后，RoutePlugin 执行前）
@@ -359,7 +361,7 @@ export class Microservice<ModuleOptions = Record<string, any>> {
       (plugin) => {
         plugin.onHandlerLoad?.(handlers);
       },
-      routePlugins
+      routePlugins,
     );
   }
 
@@ -380,7 +382,7 @@ export class Microservice<ModuleOptions = Record<string, any>> {
         throw new Error(
           `Plugin ${plugin.name} failed in onAfterStart: ${
             error instanceof Error ? error.message : String(error)
-          }`
+          }`,
         );
       }
     }
@@ -401,12 +403,12 @@ export class Microservice<ModuleOptions = Record<string, any>> {
     // 使用 hono.routes 来检查已注册的路由
     const existingRoutes = this.hono.routes;
     const routeExists = existingRoutes.some(
-      (route) => route.path === versionPath && route.method === "GET"
+      (route) => route.path === versionPath && route.method === "GET",
     );
 
     if (routeExists) {
       logger.info(
-        `Version route ${versionPath} already exists, skipping registration`
+        `Version route ${versionPath} already exists, skipping registration`,
       );
       return;
     }
@@ -430,7 +432,7 @@ export class Microservice<ModuleOptions = Record<string, any>> {
       ) {
         logger.warn(
           `Cannot register version route ${versionPath}: route matcher is already built. ` +
-            `If you have already registered a route at ${versionPath}, it will be used instead.`
+            `If you have already registered a route at ${versionPath}, it will be used instead.`,
         );
       } else {
         throw error;
@@ -507,7 +509,7 @@ export class Microservice<ModuleOptions = Record<string, any>> {
   private executePluginHook(
     hookName: string,
     callback: (plugin: Plugin) => void,
-    plugins: Plugin[] = this.plugins
+    plugins: Plugin[] = this.plugins,
   ): void {
     for (const plugin of plugins) {
       try {
@@ -516,7 +518,7 @@ export class Microservice<ModuleOptions = Record<string, any>> {
         throw new Error(
           `Plugin ${plugin.name} failed in ${hookName}: ${
             error instanceof Error ? error.message : String(error)
-          }`
+          }`,
         );
       }
     }
@@ -670,7 +672,7 @@ export class Microservice<ModuleOptions = Record<string, any>> {
    */
   handler<T extends Class, M extends keyof InstanceType<T> & string>(
     moduleClass: T,
-    methodName: M
+    methodName: M,
   ): (
     ...args: InstanceType<T>[M] extends (...args: infer P) => any ? P : never
   ) => Promise<
@@ -683,21 +685,14 @@ export class Microservice<ModuleOptions = Record<string, any>> {
     return async (
       ...args: InstanceType<T>[M] extends (...args: infer P) => any ? P : never
     ) => {
-      // 确保引擎已初始化
       this.ensureInitialized();
-
-      // 获取模块实例
       const instance = this.get(moduleClass);
-
-      // 获取方法
-      const method = (instance as any)[methodName];
+      const method = (moduleClass.prototype as any)[methodName];
       if (typeof method !== "function") {
         throw new Error(
-          `Handler ${String(methodName)} not found in module ${moduleClass.name}`
+          `Handler ${String(methodName)} not found in module ${moduleClass.name}`,
         );
       }
-
-      // 调用方法（已经过包装链处理）
       return await method.call(instance, ...args);
     };
   }
@@ -729,7 +724,7 @@ export class Microservice<ModuleOptions = Record<string, any>> {
    */
   async request(
     input: RequestInit | URL | string,
-    init?: RequestInit
+    init?: RequestInit,
   ): Promise<Response> {
     // 确保引擎已初始化
     this.ensureInitialized();

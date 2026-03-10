@@ -9,6 +9,7 @@ import { Factory } from "../../src/core/factory";
 import { Action, ActionPlugin } from "../../src/plugins/action";
 import { Cache, CachePlugin } from "../../src/plugins/cache";
 import { ClientCodePlugin } from "../../src/plugins/client-code";
+import { TelemetryPlugin } from "../../src/plugins/telemetry";
 
 // 使用 Factory 创建类型化的引擎
 const { Module, Microservice } = Factory.create(
@@ -16,7 +17,11 @@ const { Module, Microservice } = Factory.create(
   new CachePlugin(),
   new ClientCodePlugin({
     clientSavePath: "./tests/integration/generated/client.ts",
-  })
+  }),
+  new TelemetryPlugin({
+    endpoint: "http://101.47.14.19:4318",
+    insecure: true,
+  }),
 );
 
 const engine = new Microservice({
@@ -268,17 +273,17 @@ class TestService {
       z.array(
         z.object({
           cells: z.record(z.string(), z.object({ value: z.string() })),
-        })
+        }),
       ),
     ],
     returns: z.array(
       z.object({
         cells: z.record(z.string(), z.object({ value: z.string() })),
-      })
+      }),
     ),
   })
   recordReturnAction(
-    data: Array<{ cells: Record<string, { value: string }> }>
+    data: Array<{ cells: Record<string, { value: string }> }>,
   ) {
     return data;
   }
@@ -293,6 +298,27 @@ class TestService {
   })
   requestContextAction(ctx: Context) {
     return ctx.req.path;
+  }
+
+  @Action({
+    description: "测试链路追踪",
+    params: [],
+    returns: z.string(),
+  })
+  async testTraceAction() {
+    return await this.testTraceAction2();
+  }
+
+  @Action({
+    description: "测试链路追踪",
+    params: [],
+    returns: z.string(),
+  })
+  @Cache()
+  async testTraceAction2() {
+    console.log("test log");
+    await fetch("https://www.imean.ai/bff/version");
+    return "test";
   }
 }
 

@@ -1,3 +1,4 @@
+import { context, SpanKind, trace } from "@opentelemetry/api";
 import { Microservice } from "../../core/engine";
 import logger from "../../core/logger";
 import {
@@ -5,9 +6,11 @@ import {
   Plugin,
   PluginModuleOptionsSchema,
 } from "../../core/types";
-import { ConcurrencyLockModuleOptions, ConcurrencyLockOptions } from "./types";
 import { LockAdapter, MemoryLockAdapter, RedisLockAdapter } from "./adapter";
+import { ConcurrencyLockModuleOptions, ConcurrencyLockOptions } from "./types";
 import { generateLockKey } from "./utils";
+
+const tracer = trace.getTracer("concurrency-lock-plugin");
 
 /**
  * 并发锁错误
@@ -139,8 +142,24 @@ export class ConcurrencyLockPlugin implements Plugin<ConcurrencyLockModuleOption
       const moduleName = moduleMetadata.name;
 
       // 使用 wrap API 包装方法
-      handler.wrap(async (next, instance, ...args) => {
-        // 生成锁 key（精确到服务 + 模块 + 方法 + 参数 hash）
+      handler.wrap(async (next, _instance, ...args) => {
+        const activeContext = context.active();
+
+        // 创建独立的 lock span
+        const lockSpan = tracer.startSpan(
+          `LOCK ${moduleName}.${methodName}`,
+          {
+            kind: SpanKind.INTERNAL,
+            attributes: {
+              "lock.module": moduleName,
+              "lock.method": methodName,
+              "lock.timeout": timeout,
+            },
+          },
+          activeContext,
+        );
+
+        // 生成锁 key
         const lockKey = generateLockKey(
           serviceName,
           moduleName,
@@ -149,29 +168,57 @@ export class ConcurrencyLockPlugin implements Plugin<ConcurrencyLockModuleOption
           lockOptions.key,
         );
 
-        // 尝试获取锁
-        let acquired = await this.adapter.acquire(lockKey, timeout);
+        lockSpan.setAttribute("lock.key", lockKey);
 
-        // 如果获取失败，无限等待直到获取到锁
-        while (!acquired) {
-          // 等待锁释放
-          await this.adapter.waitForUnlock(lockKey, timeout, timeout);
-          
-          // 尝试获取锁
-          acquired = await this.adapter.acquire(lockKey, timeout);
-          
-          if (!acquired) {
-            // 被其他请求抢走了，继续等待
-            // 等待一小段时间后重试，避免 CPU 空转
-            await new Promise(resolve => setTimeout(resolve, 50));
-          }
-        }
-
-        // 获取锁成功，执行方法后释放锁
         try {
-          return await next();
+          // 尝试获取锁
+          let acquired = await this.adapter.acquire(lockKey, timeout);
+
+          // 如果获取失败，无限等待直到获取到锁
+          while (!acquired) {
+            lockSpan.addEvent("lock wait", { key: lockKey });
+
+            // 等待锁释放
+            await this.adapter.waitForUnlock(lockKey, timeout, timeout);
+
+            // 尝试获取锁
+            acquired = await this.adapter.acquire(lockKey, timeout);
+
+            if (!acquired) {
+              // 被其他请求抢走了，继续等待
+              // 等待一小段时间后重试，避免 CPU 空转
+              await new Promise((resolve) => setTimeout(resolve, 50));
+            }
+          }
+
+          // 获取锁成功
+          lockSpan.setAttribute("lock.acquired", true);
+          lockSpan.addEvent("lock acquired", { key: lockKey });
+
+          // 执行方法后释放锁
+          const result = await next();
+
+          lockSpan.setStatus({ code: 0 });
+          return result;
+        } catch (error: any) {
+          lockSpan.setStatus({
+            code: 2,
+            message: error.message,
+          });
+          lockSpan.recordException(error);
+          throw error;
         } finally {
-          await this.adapter.release(lockKey);
+          // 释放锁
+          try {
+            await this.adapter.release(lockKey);
+            lockSpan.addEvent("lock released", { key: lockKey });
+          } catch (releaseError: any) {
+            lockSpan.addEvent("lock release failed", {
+              key: lockKey,
+              error: releaseError.message,
+            });
+          }
+          lockSpan.end();
         }
       });
 

@@ -1,3 +1,4 @@
+import { context, SpanKind, trace } from "@opentelemetry/api";
 import { createHash } from "crypto";
 import * as ejson from "ejson";
 import { Microservice } from "../../core/engine";
@@ -10,7 +11,8 @@ import {
 } from "../../core/types";
 import { CacheAdapter, MemoryCacheAdapter } from "./adapter";
 import { CacheModuleOptions } from "./types";
-import { RequestContext } from "../telemetry/context";
+
+const tracer = trace.getTracer("cache-plugin");
 
 /**
  * CachePlugin - 缓存插件
@@ -136,36 +138,78 @@ export class CachePlugin implements Plugin<CacheModuleOptions> {
       const moduleName = moduleMetadata.name;
 
       // 使用简单的 wrap API，引擎自动管理包装链
-      handler.wrap(async (next, instance, ...args) => {
-        // 生成缓存键
-        const cacheKey = this.generateCacheKey(
-          moduleName,
-          methodName,
-          cacheOptions.key,
-          args,
+      handler.wrap(async (next, _instance, ...args) => {
+        // 获取当前活跃的 context（包含 Action 的 span）
+        const activeContext = context.active();
+
+        // 创建独立的 cache span
+        const cacheSpan = tracer.startSpan(
+          `CACHE ${moduleName}.${methodName}`,
+          {
+            kind: SpanKind.INTERNAL,
+            attributes: {
+              "cache.module": moduleName,
+              "cache.method": methodName,
+            },
+          },
+          activeContext,
         );
 
-        // 检查缓存
-        const cached = await this.adapter.get(cacheKey);
-        if (cached) {
-          logger.debug(`Cache hit for ${cacheKey}`);
-          RequestContext.setCacheInfo(true);
-          return cached.value;
+        try {
+          // 生成缓存键
+          const cacheKey = this.generateCacheKey(
+            moduleName,
+            methodName,
+            cacheOptions.key,
+            args,
+          );
+
+          // 记录缓存键到 span
+          cacheSpan.setAttribute("cache.key", cacheKey);
+
+          // 检查缓存
+          const cached = await this.adapter.get(cacheKey);
+          if (cached) {
+            // 缓存命中
+            cacheSpan.setAttribute("cache.hit", true);
+            cacheSpan.addEvent("cache hit", {
+              key: cacheKey,
+              age: Date.now() - cached.createdAt,
+            });
+            cacheSpan.setStatus({ code: 0 }); // OK
+            return cached.value;
+          }
+
+          // 缓存未命中
+          cacheSpan.setAttribute("cache.hit", false);
+
+          const result = await next();
+
+          // 存储到缓存
+          await this.adapter.set(cacheKey, {
+            value: result,
+            expiresAt: Date.now() + ttl,
+            createdAt: Date.now(),
+          });
+
+          // 记录缓存存储事件
+          cacheSpan.addEvent("cache stored", {
+            key: cacheKey,
+            ttl: ttl,
+          });
+
+          cacheSpan.setStatus({ code: 0 });
+          return result;
+        } catch (error: any) {
+          cacheSpan.setStatus({
+            code: 2, // ERROR
+            message: error.message,
+          });
+          cacheSpan.recordException(error);
+          throw error;
+        } finally {
+          cacheSpan.end();
         }
-
-        // 缓存未命中，调用下一个包装层或原始方法
-        logger.debug(`Cache miss for ${cacheKey}`);
-        RequestContext.setCacheInfo(false);
-        const result = await next();
-
-        // 存储到缓存
-        await this.adapter.set(cacheKey, {
-          value: result,
-          expiresAt: Date.now() + ttl,
-          createdAt: Date.now(),
-        });
-
-        return result;
       });
 
       logger.info(

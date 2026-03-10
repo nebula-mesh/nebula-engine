@@ -5,12 +5,16 @@
 
 import { engine } from "./dev-service";
 
-engine.start().then(() => {
+engine.start(1234).then(() => {
   const port = engine.getPort();
   console.log(`\n✅ Integration test service started on port ${port}`);
-  console.log(`📥 Client code available at http://localhost:${port}/api/client.ts`);
-  console.log(`📁 Client code saved to: ./tests/integration/generated/client.ts\n`);
-  
+  console.log(
+    `📥 Client code available at http://localhost:${port}/api/client.ts`,
+  );
+  console.log(
+    `📁 Client code saved to: ./tests/integration/generated/client.ts\n`,
+  );
+
   // 保持进程运行
   process.on("SIGINT", async () => {
     console.log("\n🛑 Shutting down service...");
@@ -18,4 +22,3 @@ engine.start().then(() => {
     process.exit(0);
   });
 });
-

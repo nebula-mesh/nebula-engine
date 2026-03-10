@@ -95,6 +95,16 @@ export interface TestsModule {
    * 请求上下文注入
    */
   requestContextAction: () => Promise<string>;
+
+  /**
+   * 测试链路追踪
+   */
+  testTraceAction: () => Promise<string>;
+
+  /**
+   * 测试链路追踪
+   */
+  testTraceAction2: () => Promise<string>;
 }
 
 export class MicroserviceClient extends BaseMicroserviceClient {
@@ -119,5 +129,7 @@ export class MicroserviceClient extends BaseMicroserviceClient {
     unknownReturnAction: { idempotent: false, stream: false },
     recordReturnAction: { idempotent: false, stream: false },
     requestContextAction: { idempotent: false, stream: false },
+    testTraceAction: { idempotent: false, stream: false },
+    testTraceAction2: { idempotent: false, stream: false },
   });
 }

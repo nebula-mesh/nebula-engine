@@ -1,8 +1,8 @@
+import { SpanKind, SpanStatusCode, context, trace } from "@opentelemetry/api";
 import * as ejson from "ejson";
 import { Context } from "hono";
 import { Microservice } from "../../core/engine";
 import logger from "../../core/logger";
-import { nebulaId } from "../../core/nebula-id";
 import {
   HandlerMetadata,
   Plugin,
@@ -11,7 +11,8 @@ import {
 } from "../../core/types";
 import { ActionModuleOptions, ActionOptions } from "./types";
 import { buildActionPath, parseAndValidateParams } from "./utils";
-import { RequestContext, createTraceContext } from "../telemetry/context";
+
+const tracer = trace.getTracer("action-plugin");
 
 /**
  * 检查对象是否是 AsyncIterable
@@ -26,7 +27,7 @@ function isAsyncIterable(obj: any): obj is AsyncIterable<any> {
  */
 export class ActionPlugin implements Plugin<ActionModuleOptions> {
   public readonly name = "action-plugin";
-  public readonly priority = PluginPriority.ROUTE; // 路由插件优先级最低，必须最后执行
+  public readonly priority = PluginPriority.ROUTE - 10; // 990，接近路由插件但使用包装链机制
   private engine!: Microservice;
 
   /**
@@ -105,21 +106,40 @@ export class ActionPlugin implements Plugin<ActionModuleOptions> {
       const paramSchemas = actionOptions.params || [];
       const returnSchema = actionOptions.returns;
 
+      // 使用包装链机制创建 span，这样内部方法调用也会有 span
+      handler.wrap(async (next) => {
+        const activeContext = context.active();
+        return tracer.startActiveSpan(
+          `${moduleMetadata.name}.${methodName}`,
+          {
+            kind: SpanKind.INTERNAL,
+            attributes: {
+              "module.action": methodName,
+              "module.name": moduleMetadata.name,
+            },
+          },
+          activeContext,
+          async (span) => {
+            try {
+              const result = await next();
+              span.setStatus({ code: SpanStatusCode.OK });
+              return result;
+            } catch (error: any) {
+              span.setStatus({
+                code: SpanStatusCode.ERROR,
+                message: error.message ?? error.toString(),
+              });
+              span.recordException(error);
+              throw error;
+            } finally {
+              span.end();
+            }
+          },
+        );
+      });
+
       // 构建路由处理器
       const actionHandler = async (ctx: Context) => {
-        // 引擎保证此时原型上的方法已经被所有包装插件包装
-        // 直接调用方法名即可获取包装后的方法
-        const method = (moduleInstance as any)[methodName];
-        if (typeof method !== "function") {
-          const errorResponse = ejson.stringify({
-            success: false,
-            error: "Action method not found",
-          });
-          return ctx.text(errorResponse, 500, {
-            "Content-Type": "application/json",
-          });
-        }
-
         try {
           // 解析请求体中的下标参数
           // 支持 GET 请求（从 query 参数解析）和 POST 等（从 body 解析）
@@ -185,10 +205,15 @@ export class ActionPlugin implements Plugin<ActionModuleOptions> {
           }
 
           // 调用方法，自动注入参数
-          // 检查方法是否需要 Context 参数：如果方法的参数数量比定义的参数多 1，则第一个参数是 Context
-          const methodLength = method.length;
-          const paramsLength = paramSchemas.length;
+          // 注意：现在方法已经被包装链包装，直接通过 moduleInstance 调用即可
+          const method = (moduleInstance as any)[methodName];
           const args = [...validation.data];
+
+          // 检查方法是否需要 Context 参数：如果方法的参数数量比定义的参数多 1，则第一个参数是 Context
+          // 注意：这里需要取原始方法的长度，因为包装后的方法 length 会变成 0
+          const originalMethod = handler.method as Function;
+          const methodLength = originalMethod.length;
+          const paramsLength = paramSchemas.length;
 
           // 如果方法参数数量比定义的参数多 1，且第一个参数可能是 Context
           if (methodLength > paramsLength) {
@@ -196,31 +221,7 @@ export class ActionPlugin implements Plugin<ActionModuleOptions> {
             args.unshift(ctx);
           }
 
-          // 创建追踪上下文并使用 RequestContext 运行方法
-          const headersRecord: Record<string, string> = {};
-          const headers = ctx.req.raw.headers;
-          if (headers) {
-            headers.forEach((value: string, key: string) => {
-              headersRecord[key] = value;
-            });
-          }
-
-          const traceContext = createTraceContext(headersRecord, () =>
-            nebulaId(),
-          );
-
-          const requestContext = {
-            trace: traceContext,
-            request: {
-              method: ctx.req.method,
-              path: actionPath,
-              headers: headersRecord,
-            },
-          };
-
-          const result = await RequestContext.run(requestContext, () =>
-            method.apply(moduleInstance, args),
-          );
+          const result = await method.apply(moduleInstance, args);
 
           // 如果是流式返回（async generator），转换为 HTTP 流式响应（SSE 格式）
           if (actionOptions.stream) {
