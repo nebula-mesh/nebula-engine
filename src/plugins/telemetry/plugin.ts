@@ -3,12 +3,13 @@ import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-proto";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-proto";
 import {
   BatchLogRecordProcessor,
-  SimpleLogRecordProcessor,
+  LoggerProvider,
 } from "@opentelemetry/sdk-logs";
 import { NodeSDK } from "@opentelemetry/sdk-node";
 import { FetchInstrumentation } from "opentelemetry-instrumentation-fetch-node";
 import { Microservice } from "../../core/engine";
 import { Plugin, PluginPriority } from "../../core/types";
+import { instrumentationLogger } from "./log";
 import type { TelemetryModuleOptions, TelemetryPluginOptions } from "./types";
 
 export class TelemetryPlugin implements Plugin<TelemetryModuleOptions> {
@@ -40,13 +41,15 @@ export class TelemetryPlugin implements Plugin<TelemetryModuleOptions> {
       url: `${endpoint}/v1/logs`,
     });
 
+    const loggerProvider = new LoggerProvider({
+      processors: [new BatchLogRecordProcessor(logExporter)], // Configure batch processor
+    });
+
+    instrumentationLogger(loggerProvider);
+
     this.sdk = new NodeSDK({
       serviceName: engine.options.name,
       traceExporter: traceExporter,
-      logRecordProcessor:
-        process.env.NODE_ENV !== "production"
-          ? new SimpleLogRecordProcessor(logExporter)
-          : new BatchLogRecordProcessor(logExporter),
       instrumentations: [
         new FetchInstrumentation({ enabled: true }),
         getNodeAutoInstrumentations({

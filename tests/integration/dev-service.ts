@@ -19,7 +19,7 @@ const { Module, Microservice } = Factory.create(
     clientSavePath: "./tests/integration/generated/client.ts",
   }),
   new TelemetryPlugin({
-    endpoint: "http://101.47.14.19:4318",
+    endpoint: "https://otlp.imean.tech",
     insecure: true,
   }),
 );

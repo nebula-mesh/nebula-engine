@@ -110,7 +110,7 @@ export class ActionPlugin implements Plugin<ActionModuleOptions> {
       handler.wrap(async (next) => {
         const activeContext = context.active();
         return tracer.startActiveSpan(
-          `${moduleMetadata.name}.${methodName}`,
+          `ACTION: ${moduleMetadata.name}.${methodName}`,
           {
             kind: SpanKind.INTERNAL,
             attributes: {

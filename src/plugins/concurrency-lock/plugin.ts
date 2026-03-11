@@ -147,7 +147,7 @@ export class ConcurrencyLockPlugin implements Plugin<ConcurrencyLockModuleOption
 
         // 创建独立的 lock span
         const lockSpan = tracer.startSpan(
-          `LOCK ${moduleName}.${methodName}`,
+          `LOCK: ${moduleName}.${methodName}`,
           {
             kind: SpanKind.INTERNAL,
             attributes: {

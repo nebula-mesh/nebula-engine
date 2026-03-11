@@ -144,7 +144,7 @@ export class CachePlugin implements Plugin<CacheModuleOptions> {
 
         // 创建独立的 cache span
         const cacheSpan = tracer.startSpan(
-          `CACHE ${moduleName}.${methodName}`,
+          `CACHE: ${moduleName}.${methodName}`,
           {
             kind: SpanKind.INTERNAL,
             attributes: {
