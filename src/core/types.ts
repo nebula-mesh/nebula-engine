@@ -92,6 +92,28 @@ export interface Plugin<TModuleOptions = Record<string, any>> {
 }
 
 /**
+ * 引擎静态文件配置
+ */
+export interface StaticOptions {
+  /**
+   * 静态文件路由前缀（可选，以 / 开头）
+   * 例如：设置为 "/static" 后，访问 "/static/index.html"
+   * 为空时匹配所有路径（如 "/api/*" 和 "/api/index.html" 都指向根目录）
+   */
+  prefix?: string;
+  /**
+   * 静态文件目录路径
+   * 可以是绝对路径或相对路径（相对于项目根目录）
+   */
+  path: string;
+  /**
+   * 是否启用缓存（默认为 true）
+   * 启用后会设置 Cache-Control 头
+   */
+  cache?: boolean;
+}
+
+/**
  * 引擎创建选项
  */
 export interface MicroserviceOptions {
@@ -99,6 +121,7 @@ export interface MicroserviceOptions {
   version: string; // 语义化版本
   hostname?: string; // 绑定主机名（默认0.0.0.0）
   prefix?: string; // 路由前缀（默认""，用于Action插件的路由注册）
+  static?: StaticOptions | StaticOptions[]; // 静态文件配置
 }
 
 /**

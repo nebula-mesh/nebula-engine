@@ -182,7 +182,7 @@ describe("MicroserviceEngine", () => {
   describe("版本路由", () => {
     it("应该自动注册版本路由", async () => {
       const port = await engine.start();
-      const response = await fetch(`http://127.0.0.1:${port}`);
+      const response = await fetch(`http://127.0.0.1:${port}/_version`);
       expect(response.ok).toBe(true);
       const data = await response.json();
       expect(data).toEqual({
@@ -204,7 +204,7 @@ describe("MicroserviceEngine", () => {
       });
 
       const port = await testEngine.start();
-      const response = await fetch(`http://127.0.0.1:${port}/api`);
+      const response = await fetch(`http://127.0.0.1:${port}/api/_version`);
       expect(response.ok).toBe(true);
       const data = await response.json();
       expect(data).toEqual({
