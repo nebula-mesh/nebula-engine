@@ -1,7 +1,9 @@
 import { serve } from "@hono/node-server";
 import { httpInstrumentationMiddleware } from "@hono/otel";
 import { Hono } from "hono";
+import { serveStatic } from "@hono/node-server/serve-static";
 import * as net from "net";
+import * as path from "path";
 import { getClassesByKey, getClassMetadata } from "../metadata/metadata";
 import { getAllHandlerMetadata } from "./decorators";
 import { PluginNameRequiredError } from "./errors";
@@ -14,6 +16,7 @@ import {
   ModuleMetadata,
   Plugin,
   PluginPriority,
+  StaticOptions,
 } from "./types";
 
 // 注意：MODULE_METADATA_KEY 已移除，每个工厂实例使用唯一的 key
@@ -397,7 +400,7 @@ export class Microservice<ModuleOptions = Record<string, any>> {
    */
   private registerVersionRoute(): void {
     const prefix = this.options.prefix || "";
-    const versionPath = prefix ? `${prefix}` : "/";
+    const versionPath = prefix ? `${prefix}/_version` : "/_version";
 
     // 检查路由是否已存在
     // 使用 hono.routes 来检查已注册的路由
@@ -437,6 +440,64 @@ export class Microservice<ModuleOptions = Record<string, any>> {
       } else {
         throw error;
       }
+    }
+
+    // 注册静态文件路由
+    this.registerStaticRoutes();
+  }
+
+  /**
+   * 注册静态文件路由
+   */
+  private registerStaticRoutes(): void {
+    const staticConfig = this.options.static;
+    if (!staticConfig) {
+      return;
+    }
+
+    const configs = Array.isArray(staticConfig) ? staticConfig : [staticConfig];
+    const globalPrefix = this.options.prefix || "";
+
+    for (const config of configs) {
+      let staticPrefix = config.prefix || "";
+      const staticPath = config.path;
+      const enableCache = config.cache ?? true;
+
+      const resolvedPath = path.isAbsolute(staticPath)
+        ? staticPath
+        : path.resolve(process.cwd(), staticPath);
+
+      const fullPrefix = globalPrefix + staticPrefix;
+      if (!fullPrefix) {
+        logger.warn(
+          `Static prefix cannot be empty when global prefix is also empty, skipping.`,
+        );
+        continue;
+      }
+
+      const routePattern = fullPrefix + "/*";
+
+      const staticHandler = serveStatic({
+        root: resolvedPath,
+        rewriteRequestPath: (requestPath) => {
+          if (fullPrefix && requestPath.startsWith(fullPrefix)) {
+            return requestPath.replace(new RegExp(`^${fullPrefix}`), "");
+          }
+          return requestPath;
+        },
+      });
+
+      this.hono.use(routePattern, async (ctx, next) => {
+        const result = await staticHandler(ctx, next);
+        if (enableCache && result) {
+          ctx.header("Cache-Control", "public, max-age=31536000");
+        }
+        return result;
+      });
+
+      logger.info(
+        `Registered static route: ${routePattern} -> ${resolvedPath} (cache: ${enableCache})`,
+      );
     }
   }
 

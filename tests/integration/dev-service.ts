@@ -23,6 +23,10 @@ const engine = new Microservice({
   name: "integration-test-service",
   version: "1.0.0",
   prefix: "/api",
+  static: {
+    prefix: "",
+    path: "./dist",
+  },
 });
 
 // 模拟用户数据
