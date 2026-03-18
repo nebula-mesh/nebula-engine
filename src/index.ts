@@ -38,9 +38,6 @@ export * from "./plugins/client-code";
 // 动态配置插件 (Dynamic Config Plugin)
 export * from "./plugins/dynamic-config";
 
-// Telemetry插件
-export * from "./plugins/telemetry";
-
 // 并发锁插件
 export * from "./plugins/concurrency-lock";
 
