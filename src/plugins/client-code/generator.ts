@@ -75,9 +75,11 @@ export function getZodTypeString(
             const fieldTypeName = fieldDef.type;
             const isOptional = fieldTypeName === "optional";
             const isDefault = defaultOptional && fieldTypeName === "default";
-            const fieldType = processType(
-              isOptional ? fieldDef.innerType : value,
-            );
+            // literal 类型没有 innerType，需要直接使用 value
+            const fieldType =
+              isOptional && fieldDef.innerType
+                ? processType(fieldDef.innerType)
+                : processType(value as any);
             return `${key}${isOptional || isDefault ? "?" : ""}: ${fieldType}`;
           })
           .join("; ");
@@ -129,6 +131,20 @@ export function getZodTypeString(
           values.map((opt: unknown) => `"${String(opt)}"`).join(" | ") +
           ")"
         );
+      }
+      case "literal": {
+        const values = def.values;
+        if (values && values.length > 0) {
+          const value = values[0];
+          if (typeof value === "string") {
+            return `"${value}"`;
+          } else if (typeof value === "number" || typeof value === "boolean") {
+            return String(value);
+          } else if (value === null) {
+            return "null";
+          }
+        }
+        return "unknown";
       }
       case "default": {
         return processType(def.innerType);

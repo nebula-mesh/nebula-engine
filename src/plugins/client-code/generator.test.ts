@@ -13,11 +13,12 @@ test("zod type string", () => {
           d: z.unknown(),
           e: z.enum(["a", "b", "c"]),
           f: z.string().default("test"),
+          g: z.literal("test"),
         }),
-        true
+        true,
       ),
       expected:
-        '{ a: string; b: Record<string, string>; c: Map<number, any>; d: unknown; e: ("a" | "b" | "c"); f?: string }',
+        '{ a: string; b: Record<string, string>; c: Map<number, any>; d: unknown; e: ("a" | "b" | "c"); f?: string; g: "test" }',
     },
     {
       type: getZodTypeString(
@@ -26,7 +27,7 @@ test("zod type string", () => {
           b: z.instanceof(Uint8Array),
           c: z.date(),
           d: z.instanceof(RegExp),
-        })
+        }),
       ),
       expected: "{ a: string; b: Uint8Array; c: Date; d: unknown }",
     },
@@ -36,7 +37,7 @@ test("zod type string", () => {
     },
     {
       type: getZodTypeString(
-        z.number().transform((val) => parseFloat(val.toString()))
+        z.number().transform((val) => parseFloat(val.toString())),
       ),
       expected: "number",
     },
