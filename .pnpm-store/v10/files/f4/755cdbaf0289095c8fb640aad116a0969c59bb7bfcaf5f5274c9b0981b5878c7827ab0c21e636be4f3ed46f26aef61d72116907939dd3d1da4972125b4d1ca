@@ -1,0 +1,135 @@
+interface WebSocketOptions {
+    url: string;
+    timeout?: number;
+    retryInterval?: number;
+    maxRetries?: number;
+    pingInterval?: number;
+    WebSocket?: typeof WebSocket;
+    onClose?: () => void;
+    onError?: (error: Error) => void;
+    onReconnect?: () => void;
+    onReconnected?: () => void;
+}
+interface ClientOptions {
+    baseUrl: string;
+    prefix?: string;
+    headers?: Record<string, string>;
+    fetch?: typeof fetch;
+    websocket?: boolean | Partial<WebSocketOptions>;
+}
+interface ModuleMethodOptions {
+    idempotent: boolean;
+    stream: boolean;
+}
+interface RetryOptions {
+    maxAttempts?: number;
+    delays?: number[];
+    shouldRetry?: (error: Error) => boolean;
+}
+interface RequestOptions extends RetryOptions {
+    timeout?: number;
+    headers?: Record<string, string>;
+    concurrency?: number;
+}
+interface StreamOptions extends RequestOptions {
+    bufferSize?: number;
+    autoClose?: boolean;
+}
+interface RequestInterceptor {
+    onRequest?: (config: {
+        url: string;
+        method: string;
+        headers: Record<string, string>;
+        body: any;
+    }) => Promise<void> | void;
+    onResponse?: (response: Response) => Promise<Response> | Response;
+    onError?: (error: Error) => Promise<Error> | Error;
+}
+interface ClientConfig extends ClientOptions {
+    retry?: RetryOptions;
+    request?: RequestOptions;
+    stream?: StreamOptions;
+    interceptors?: RequestInterceptor[];
+}
+
+/**
+ * Universal client for microservices
+ * @example
+ * ```typescript
+ * const client = new BaseMicroserviceClient({
+ *   baseUrl: 'http://localhost:3000',
+ *   prefix: '/api'
+ * });
+ * ```
+ */
+declare class BaseMicroserviceClient {
+    private baseUrl;
+    private prefix;
+    private headers;
+    private fetch;
+    private wsClient?;
+    private config;
+    private queue;
+    /**
+     * Creates a new MicroserviceClient instance
+     * @param options Client configuration options
+     */
+    constructor(options: ClientConfig);
+    /**
+     * 应用请求拦截器
+     * @internal
+     */
+    private applyRequestInterceptors;
+    /**
+     * 应用响应拦截器
+     * @internal
+     */
+    private applyResponseInterceptors;
+    /**
+     * 应用错误拦截器
+     * @internal
+     */
+    private applyErrorInterceptors;
+    /**
+     * Sends an HTTP request to the server
+     * @internal
+     */
+    private sendHttpRequest;
+    /**
+     * Sends a request to the server
+     * @internal
+     */
+    protected request(moduleName: string, methodName: string, isStream: boolean, idempotent: boolean, ...args: any[]): Promise<any>;
+    private makeRequest;
+    /**
+     * Closes the client and its connections
+     */
+    close(): void;
+    /**
+     * 注册模块方法
+     * 这个方法会被生成的客户端代码调用
+     */
+    protected registerModuleMethod(moduleName: string, methodName: string, options: ModuleMethodOptions): (...args: any[]) => Promise<any>;
+    /**
+     * 注册模块
+     * 这个方法会被生成的客户端代码调用
+     */
+    protected registerModule<T>(moduleName: string, methods: Record<string, ModuleMethodOptions>): T;
+}
+
+declare class ClientError extends Error {
+    constructor(message: string);
+}
+declare class ConnectionError extends ClientError {
+    constructor(message: string);
+}
+declare class TimeoutError extends ClientError {
+    constructor(message: string);
+}
+declare class StreamError extends ClientError {
+    constructor(message: string);
+}
+
+declare const MicroserviceClient: typeof BaseMicroserviceClient;
+
+export { BaseMicroserviceClient, type ClientConfig, ClientError, type ClientOptions, ConnectionError, MicroserviceClient, type RequestOptions, type RetryOptions, StreamError, type StreamOptions, TimeoutError, type WebSocketOptions };

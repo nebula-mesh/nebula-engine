@@ -1,0 +1,23 @@
+import { Context, MiddlewareHandler } from "hono";
+import { MeterProvider, TimeInput, Tracer, TracerProvider } from "@opentelemetry/api";
+
+//#region src/types.d.ts
+type HttpInstrumentationConfig = {
+  tracerProvider?: TracerProvider;
+  meterProvider?: MeterProvider;
+  tracer?: Tracer;
+  captureRequestHeaders?: string[];
+  captureResponseHeaders?: string[];
+  captureActiveRequests?: boolean;
+  getTime?(): TimeInput;
+  disableTracing?: boolean;
+  spanNameFactory?: (c: Context) => string;
+  serviceName?: string;
+  serviceVersion?: string;
+};
+//#endregion
+//#region src/index.d.ts
+declare const httpInstrumentationMiddleware: (userConfig?: HttpInstrumentationConfig) => MiddlewareHandler;
+//#endregion
+export { httpInstrumentationMiddleware };
+//# sourceMappingURL=index.d.cts.map

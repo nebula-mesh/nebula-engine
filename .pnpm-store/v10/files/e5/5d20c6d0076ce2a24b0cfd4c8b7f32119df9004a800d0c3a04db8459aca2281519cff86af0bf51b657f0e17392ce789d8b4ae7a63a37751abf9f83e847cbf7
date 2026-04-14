@@ -1,0 +1,184 @@
+//#region rolldown:runtime
+var __create = Object.create;
+var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __copyProps = (to, from, except, desc) => {
+	if (from && typeof from === "object" || typeof from === "function") for (var keys = __getOwnPropNames(from), i = 0, n = keys.length, key; i < n; i++) {
+		key = keys[i];
+		if (!__hasOwnProp.call(to, key) && key !== except) __defProp(to, key, {
+			get: ((k) => from[k]).bind(null, key),
+			enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable
+		});
+	}
+	return to;
+};
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", {
+	value: mod,
+	enumerable: true
+}) : target, mod));
+
+//#endregion
+let __opentelemetry_api = require("@opentelemetry/api");
+__opentelemetry_api = __toESM(__opentelemetry_api);
+let __opentelemetry_semantic_conventions = require("@opentelemetry/semantic-conventions");
+__opentelemetry_semantic_conventions = __toESM(__opentelemetry_semantic_conventions);
+let hono_factory = require("hono/factory");
+hono_factory = __toESM(hono_factory);
+let hono_route = require("hono/route");
+hono_route = __toESM(hono_route);
+let __opentelemetry_semantic_conventions_incubating = require("@opentelemetry/semantic-conventions/incubating");
+__opentelemetry_semantic_conventions_incubating = __toESM(__opentelemetry_semantic_conventions_incubating);
+
+//#region package.json
+var name = "@hono/otel";
+var version = "1.1.1";
+
+//#endregion
+//#region src/consts.ts
+const INSTRUMENTATION_SCOPE = {
+	name,
+	version
+};
+
+//#endregion
+//#region src/trackers.ts
+const getMeter = (config) => (config.meterProvider ?? __opentelemetry_api.metrics.getMeterProvider()).getMeter(INSTRUMENTATION_SCOPE.name);
+const createRequestDurationTracker = (config) => {
+	const histogram = getMeter(config).createHistogram(__opentelemetry_semantic_conventions_incubating.METRIC_HTTP_SERVER_REQUEST_DURATION, {
+		description: "Duration of HTTP requests in seconds",
+		unit: "s",
+		valueType: __opentelemetry_api.ValueType.DOUBLE
+	});
+	return { record(duration, attrs) {
+		histogram.record(duration, attrs);
+	} };
+};
+const createActiveRequestsTracker = (config) => {
+	const counter = getMeter(config).createUpDownCounter(__opentelemetry_semantic_conventions_incubating.METRIC_HTTP_SERVER_ACTIVE_REQUESTS, {
+		description: "Number of active (in-flight) HTTP server requests",
+		valueType: __opentelemetry_api.ValueType.DOUBLE
+	});
+	return {
+		increment(attrs) {
+			counter.add(1, attrs);
+		},
+		decrement(attrs) {
+			counter.add(-1, attrs);
+		}
+	};
+};
+
+//#endregion
+//#region src/index.ts
+const normalizeConfig = (config) => {
+	const reqHeadersSrc = [...config?.captureRequestHeaders ?? []];
+	const resHeadersSrc = [...config?.captureResponseHeaders ?? []];
+	const requestHeaderSet = new Set(reqHeadersSrc.map((h) => h.toLowerCase()));
+	const responseHeaderSet = new Set(resHeadersSrc.map((h) => h.toLowerCase()));
+	return {
+		...config,
+		requestHeaderSet,
+		responseHeaderSet,
+		captureActiveRequests: config?.captureActiveRequests ?? true,
+		captureRequestHeaders: reqHeadersSrc,
+		captureResponseHeaders: resHeadersSrc
+	};
+};
+const resolveTracer = (config) => {
+	if (config.tracer) return config.tracer;
+	return (config.tracerProvider ?? __opentelemetry_api.trace.getTracerProvider()).getTracer(INSTRUMENTATION_SCOPE.name, INSTRUMENTATION_SCOPE.version);
+};
+const httpInstrumentationMiddleware = (userConfig = {
+	captureRequestHeaders: [],
+	captureResponseHeaders: [],
+	disableTracing: false
+}) => {
+	const config = normalizeConfig(userConfig);
+	const tracer = config.disableTracing ? void 0 : resolveTracer(config);
+	const spanName = (c) => config.spanNameFactory?.(c) ?? `${c.req.method} ${(0, hono_route.routePath)(c)}`;
+	const activeReqs = config.captureActiveRequests ? createActiveRequestsTracker(config) : void 0;
+	const requestDuration = createRequestDurationTracker(config);
+	return (0, hono_factory.createMiddleware)(async (c, next) => {
+		const parent = __opentelemetry_api.propagation.extract(__opentelemetry_api.context.active(), c.req.header());
+		const method = c.req.method;
+		const stableAttrs = {
+			[__opentelemetry_semantic_conventions.ATTR_HTTP_REQUEST_METHOD]: method,
+			[__opentelemetry_semantic_conventions.ATTR_SERVICE_NAME]: config.serviceName,
+			[__opentelemetry_semantic_conventions.ATTR_SERVICE_VERSION]: config.serviceVersion
+		};
+		activeReqs?.increment(stableAttrs);
+		const monotonicStartTime = performance.now();
+		const deferredRequestHeaderAttributes = {};
+		const reqHeaders = c.req.header();
+		for (const [rawName, value] of Object.entries(reqHeaders)) {
+			const name$1 = rawName.toLowerCase();
+			if (config.requestHeaderSet.has(name$1)) deferredRequestHeaderAttributes[(0, __opentelemetry_semantic_conventions.ATTR_HTTP_REQUEST_HEADER)(name$1)] = value;
+		}
+		const finalize = (span, error) => {
+			try {
+				const status = c.res.status;
+				if (span) {
+					const captureResp = config.responseHeaderSet;
+					for (const [name$1, value] of c.res.headers.entries()) {
+						const lower = name$1.toLowerCase();
+						if (captureResp.has(lower)) span.setAttribute((0, __opentelemetry_semantic_conventions.ATTR_HTTP_RESPONSE_HEADER)(lower), value);
+					}
+					span.setAttribute(__opentelemetry_semantic_conventions.ATTR_HTTP_RESPONSE_STATUS_CODE, status);
+					if (status >= 500) span.setStatus({ code: __opentelemetry_api.SpanStatusCode.ERROR });
+					if (error) {
+						try {
+							span.recordException(error);
+						} catch {}
+						span.setStatus({ code: __opentelemetry_api.SpanStatusCode.ERROR });
+					}
+				}
+			} finally {
+				activeReqs?.decrement(stableAttrs);
+				span?.setAttribute(__opentelemetry_semantic_conventions.ATTR_HTTP_ROUTE, (0, hono_route.routePath)(c));
+				span?.updateName(spanName(c));
+				const duration = (performance.now() - monotonicStartTime) / 1e3;
+				requestDuration.record(duration, {
+					...stableAttrs,
+					[__opentelemetry_semantic_conventions.ATTR_HTTP_ROUTE]: (0, hono_route.routePath)(c),
+					[__opentelemetry_semantic_conventions.ATTR_HTTP_RESPONSE_STATUS_CODE]: c.res.status
+				});
+			}
+		};
+		if (!tracer) {
+			try {
+				await next();
+				finalize(void 0, void 0);
+			} catch (e) {
+				finalize(void 0, e);
+				throw e;
+			}
+			return;
+		}
+		return tracer.startActiveSpan(spanName(c), {
+			kind: __opentelemetry_api.SpanKind.SERVER,
+			startTime: config.getTime?.(),
+			attributes: {
+				...stableAttrs,
+				[__opentelemetry_semantic_conventions.ATTR_URL_FULL]: c.req.url,
+				[__opentelemetry_semantic_conventions.ATTR_HTTP_ROUTE]: (0, hono_route.routePath)(c)
+			}
+		}, parent, async (span) => {
+			try {
+				for (const [k, v] of Object.entries(deferredRequestHeaderAttributes)) span.setAttribute(k, v);
+				await next();
+				finalize(span, c.error);
+			} catch (e) {
+				finalize(span, e);
+				throw e;
+			} finally {
+				span.end(config.getTime?.());
+			}
+		});
+	});
+};
+
+//#endregion
+exports.httpInstrumentationMiddleware = httpInstrumentationMiddleware;

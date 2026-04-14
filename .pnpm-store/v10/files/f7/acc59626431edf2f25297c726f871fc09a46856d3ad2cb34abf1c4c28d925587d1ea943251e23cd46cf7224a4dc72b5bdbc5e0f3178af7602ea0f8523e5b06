@@ -1,0 +1,860 @@
+'use strict';
+
+var api = require('@opentelemetry/api');
+var ejson2 = require('ejson');
+
+function _interopDefault (e) { return e && e.__esModule ? e : { default: e }; }
+
+var ejson2__default = /*#__PURE__*/_interopDefault(ejson2);
+
+// src/client.ts
+
+// src/constants.ts
+var DEFAULT_TIMEOUT = 6e4;
+var DEFAULT_RETRY_DELAYS = [500, 1e3, 3e3, 5e3];
+var DEFAULT_MAX_RETRIES = 3;
+var DEFAULT_PING_INTERVAL = 3e4;
+var WS_CLOSE_CODES = {
+  NORMAL: 1e3,
+  GOING_AWAY: 1001,
+  PROTOCOL_ERROR: 1002,
+  INVALID_DATA: 1003,
+  POLICY_VIOLATION: 1008,
+  MESSAGE_TOO_BIG: 1009,
+  INTERNAL_ERROR: 1011
+};
+var HTTP_STATUS = {
+  OK: 200,
+  BAD_REQUEST: 400,
+  UNAUTHORIZED: 401,
+  NOT_FOUND: 404,
+  INTERNAL_ERROR: 500
+};
+
+// src/errors.ts
+var ClientError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "ClientError";
+  }
+};
+var ConnectionError = class extends ClientError {
+  constructor(message) {
+    super(message);
+    this.name = "ConnectionError";
+  }
+};
+var TimeoutError = class extends ClientError {
+  constructor(message) {
+    super(message);
+    this.name = "TimeoutError";
+  }
+};
+var StreamError = class extends ClientError {
+  constructor(message) {
+    super(message);
+    this.name = "StreamError";
+  }
+};
+
+// src/queue.ts
+var RequestQueue = class {
+  queue = /* @__PURE__ */ new Map();
+  concurrency;
+  running = 0;
+  pendingRequests = [];
+  constructor(concurrency = 10) {
+    this.concurrency = concurrency;
+  }
+  async add(key, fn, timeout, url) {
+    if (this.running >= this.concurrency) {
+      return new Promise((resolve, reject) => {
+        this.pendingRequests.push({ key, fn, resolve, reject, timeout, url });
+      });
+    }
+    return await this.executeRequest(key, fn, timeout, url);
+  }
+  async executeRequest(key, fn, timeout, url) {
+    this.running++;
+    const controller = new AbortController();
+    try {
+      let timeoutId;
+      const timeoutPromise = timeout ? new Promise((_, reject) => {
+        timeoutId = setTimeout(() => {
+          controller.abort();
+          reject(new TimeoutError(`Request timeout for ${url}`));
+        }, timeout);
+      }) : null;
+      let rejectFn;
+      const promise = new Promise((resolve, reject) => {
+        rejectFn = reject;
+        fn().then(resolve).catch(reject);
+      });
+      this.queue.set(key, {
+        promise,
+        abort: () => {
+          controller.abort();
+          if (timeoutId) clearTimeout(timeoutId);
+          rejectFn(new TimeoutError(`Request aborted for ${url}`));
+        },
+        reject: rejectFn
+      });
+      const result = await (timeoutPromise ? Promise.race([promise, timeoutPromise]) : promise);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      return result;
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        throw new TimeoutError(`Request aborted for ${url}`);
+      }
+      throw error;
+    } finally {
+      this.queue.delete(key);
+      this.running--;
+      if (this.pendingRequests.length > 0 && this.running < this.concurrency) {
+        const next = this.pendingRequests.shift();
+        try {
+          const result = await this.executeRequest(
+            next.key,
+            next.fn,
+            next.timeout,
+            next.url
+          );
+          next.resolve(result);
+        } catch (error) {
+          next.reject(error);
+        }
+      }
+    }
+  }
+  abort(key) {
+    const request = this.queue.get(key);
+    if (request) {
+      request.abort();
+      this.queue.delete(key);
+    }
+  }
+  abortAll() {
+    for (const [key] of this.queue) {
+      this.abort(key);
+    }
+  }
+  clear() {
+    this.abortAll();
+    this.pendingRequests.forEach(({ reject }) => {
+      reject(new TimeoutError("Queue cleared"));
+    });
+    this.pendingRequests.length = 0;
+  }
+};
+function exponentialDelay(retryCount, baseDelay) {
+  return baseDelay * Math.min(Math.pow(2, retryCount), 5);
+}
+async function loadBrotli() {
+  const global = globalThis;
+  if (global.document) {
+    const url = "https://esm.sh/brotli-wasm@3.0.1/index.web.js";
+    return await import(url).then((m) => m.default);
+  } else if (global.Deno) {
+    const brotli = await import('brotli-wasm');
+    return brotli.default ?? brotli;
+  } else {
+    const { brotliCompress, brotliDecompress, constants } = await import('zlib');
+    return {
+      compress: (data, { quality = 6 }) => new Promise((resolve, reject) => {
+        brotliCompress(
+          data,
+          {
+            params: { [constants.BROTLI_PARAM_QUALITY]: quality }
+          },
+          (err, data2) => {
+            if (err) reject(err);
+            else resolve(data2);
+          }
+        );
+      }),
+      decompress: (data) => new Promise((resolve, reject) => {
+        brotliDecompress(data, (err, data2) => {
+          if (err) reject(err);
+          else resolve(data2);
+        });
+      })
+    };
+  }
+}
+async function retry(fn, options = {}) {
+  const {
+    maxAttempts = 3,
+    delays = DEFAULT_RETRY_DELAYS,
+    shouldRetry = (error) => error instanceof ConnectionError || error instanceof TimeoutError
+  } = options;
+  let lastError;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      if (!shouldRetry(lastError) || attempt >= maxAttempts - 1) {
+        throw lastError;
+      }
+      await new Promise((resolve) => setTimeout(resolve, delays[attempt]));
+    }
+  }
+  throw lastError || new ClientError("Retry failed");
+}
+function generateRequestId() {
+  return crypto.randomUUID();
+}
+function tryParseCompleteJson(buf) {
+  let start = 0;
+  while (start < buf.length && /\s/.test(buf[start])) {
+    start++;
+  }
+  if (start >= buf.length) {
+    return null;
+  }
+  const firstChar = buf[start];
+  if (firstChar !== "{" && firstChar !== "[") {
+    return null;
+  }
+  let depth = 0;
+  let inString = false;
+  let escapeNext = false;
+  let end = start;
+  for (let i = start; i < buf.length; i++) {
+    const char = buf[i];
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+    if (char === "\\") {
+      escapeNext = true;
+      continue;
+    }
+    if (char === '"' && !escapeNext) {
+      inString = !inString;
+      continue;
+    }
+    if (!inString) {
+      if (char === firstChar) {
+        depth++;
+      } else if (firstChar === "{" && char === "}" || firstChar === "[" && char === "]") {
+        depth--;
+        if (depth === 0) {
+          end = i + 1;
+          break;
+        }
+      }
+    }
+  }
+  if (depth !== 0) {
+    return null;
+  }
+  try {
+    const jsonStr = buf.slice(start, end);
+    const data = ejson2__default.default.parse(jsonStr);
+    const remaining = buf.slice(end).trimStart();
+    return { data, remaining };
+  } catch {
+    return null;
+  }
+}
+var WebSocketClient = class {
+  /**
+   * Creates a new WebSocketClient instance
+   * @param options WebSocket configuration options
+   */
+  constructor(options) {
+    this.options = options;
+    this.options = {
+      timeout: DEFAULT_TIMEOUT,
+      retryInterval: 3e3,
+      maxRetries: DEFAULT_MAX_RETRIES,
+      pingInterval: DEFAULT_PING_INTERVAL,
+      ...options
+    };
+    this.maxRetries = this.options.maxRetries;
+    this.WebSocketImpl = options.WebSocket || globalThis.WebSocket;
+  }
+  ws = null;
+  connecting = false;
+  messageQueue = /* @__PURE__ */ new Map();
+  reconnectTimer;
+  pingTimer;
+  retryCount = 0;
+  maxRetries = 5;
+  closed = false;
+  brotli;
+  WebSocketImpl;
+  streamQueues = /* @__PURE__ */ new Map();
+  streamBuffers = /* @__PURE__ */ new Map();
+  async encodeMessage(message) {
+    if (!this.brotli) {
+      this.brotli = await loadBrotli();
+    }
+    const jsonStr = ejson2__default.default.stringify(message);
+    const uint8Array = new TextEncoder().encode(jsonStr);
+    return await this.brotli.compress(uint8Array, { quality: 6 });
+  }
+  async decodeMessage(data) {
+    if (!this.brotli) {
+      this.brotli = await loadBrotli();
+    }
+    let uint8Array;
+    if (data instanceof Blob) {
+      uint8Array = new Uint8Array(await data.arrayBuffer());
+    } else if (data instanceof ArrayBuffer) {
+      uint8Array = new Uint8Array(data);
+    } else {
+      uint8Array = data;
+    }
+    const decompressed = await this.brotli.decompress(uint8Array);
+    const jsonStr = new TextDecoder().decode(decompressed);
+    return ejson2__default.default.parse(jsonStr);
+  }
+  startPing() {
+    this.stopPing();
+    this.pingTimer = setInterval(() => {
+      if (this.ws?.readyState === this.WebSocketImpl.OPEN) {
+        this.encodeMessage({ type: "ping" }).then((encoded) => this.ws.send(encoded)).catch(console.error);
+      }
+    }, this.options.pingInterval);
+  }
+  stopPing() {
+    if (this.pingTimer) {
+      clearInterval(this.pingTimer);
+      this.pingTimer = undefined;
+    }
+  }
+  handleMessage = async (event) => {
+    try {
+      const message = await this.decodeMessage(event.data);
+      if (!message.id) return;
+      if (message.type === "ping") {
+        return;
+      }
+      const streamQueue = this.streamQueues.get(message.id);
+      if (streamQueue) {
+        if (message.error) {
+          const error = new StreamError(message.error);
+          streamQueue.forEach(({ reject }) => reject(error));
+          this.streamQueues.delete(message.id);
+          this.streamBuffers.delete(message.id);
+          return;
+        }
+        const buffer = this.streamBuffers.get(message.id) || [];
+        buffer.push({
+          value: message.data,
+          done: message.done || false,
+          error: message.error
+        });
+        this.streamBuffers.set(message.id, buffer);
+        while (buffer.length > 0 && streamQueue.length > 0) {
+          const item = buffer.shift();
+          const { resolve, reject } = streamQueue.shift();
+          if (item.error) {
+            reject(new StreamError(item.error));
+          } else {
+            resolve({
+              done: item.done,
+              value: item.value
+            });
+          }
+        }
+        return;
+      }
+      const pending = this.messageQueue.get(message.id);
+      if (pending) {
+        clearTimeout(pending.timer);
+        this.messageQueue.delete(message.id);
+        if (message.error) {
+          pending.reject(new StreamError(message.error));
+        } else {
+          pending.resolve(message.data);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to handle message:", error);
+    }
+  };
+  async connect() {
+    if (this.ws?.readyState === this.WebSocketImpl.OPEN) {
+      return;
+    }
+    if (this.connecting) {
+      return new Promise((resolve, reject) => {
+        const checkConnection = () => {
+          if (this.ws?.readyState === this.WebSocketImpl.OPEN) {
+            resolve();
+          } else if (!this.connecting) {
+            reject(new ConnectionError("Connection failed"));
+          } else {
+            setTimeout(checkConnection, 100);
+          }
+        };
+        checkConnection();
+      });
+    }
+    this.connecting = true;
+    try {
+      this.ws = new this.WebSocketImpl(this.options.url);
+      this.ws.addEventListener("message", this.handleMessage);
+      await new Promise((resolve, reject) => {
+        const ws = this.ws;
+        ws.onopen = () => {
+          this.connecting = false;
+          this.retryCount = 0;
+          this.startPing();
+          this.options.onReconnected?.();
+          resolve();
+        };
+        ws.onclose = (event) => {
+          this.connecting = false;
+          this.stopPing();
+          this.options.onClose?.();
+          this.scheduleReconnect();
+          reject(
+            new ConnectionError(`Connection closed with code ${event.code}`)
+          );
+        };
+        ws.onerror = (error) => {
+          this.connecting = false;
+          const err = error instanceof Error ? error : new Error("WebSocket error");
+          this.options.onError?.(err);
+          reject(new ConnectionError(err.message));
+        };
+      });
+    } catch (error) {
+      this.connecting = false;
+      this.retryCount++;
+      throw new ConnectionError(
+        error instanceof Error ? error.message : String(error)
+      );
+    }
+  }
+  scheduleReconnect() {
+    if (this.reconnectTimer || this.closed) return;
+    const delay = exponentialDelay(
+      this.retryCount,
+      this.options.retryInterval
+    );
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = undefined;
+      this.connect().catch(() => {
+        if (this.retryCount < this.maxRetries && !this.closed) {
+          this.scheduleReconnect();
+        }
+      });
+    }, delay);
+  }
+  /**
+   * Sends a message to the server
+   * @param module Module name
+   * @param action Action name
+   * @param args Arguments
+   * @param isStream Whether this is a streaming request
+   */
+  async send(module, action, args, isStream = false) {
+    if (this.closed) {
+      throw new ConnectionError("WebSocket client is closed");
+    }
+    await this.connect();
+    const id = generateRequestId();
+    const message = {
+      id,
+      type: "request",
+      module,
+      action,
+      args: args.reduce((obj, arg, index) => {
+        obj[index] = arg;
+        return obj;
+      }, {})
+    };
+    await this.encodeMessage(message).then((encoded) => {
+      if (this.ws?.readyState !== this.WebSocketImpl.OPEN) {
+        throw new ConnectionError("Connection is not open");
+      }
+      this.ws.send(encoded);
+    });
+    if (isStream) {
+      this.streamQueues.set(id, []);
+      return this.createStreamIterator(id);
+    }
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.messageQueue.delete(id);
+        reject(new TimeoutError(`Request timeout for ${module}/${action}`));
+      }, this.options.timeout);
+      this.messageQueue.set(id, { resolve, reject, timer });
+    });
+  }
+  createStreamIterator(id) {
+    return {
+      [Symbol.asyncIterator]: () => ({
+        next: () => {
+          return new Promise((resolve, reject) => {
+            const buffer = this.streamBuffers.get(id) || [];
+            if (buffer.length > 0) {
+              const item = buffer.shift();
+              if (buffer.length === 0) {
+                this.streamBuffers.delete(id);
+              }
+              if (item.error) {
+                this.streamQueues.delete(id);
+                reject(new StreamError(item.error));
+              } else {
+                if (item.done) {
+                  this.streamQueues.delete(id);
+                }
+                resolve({
+                  done: item.done,
+                  value: item.value
+                });
+              }
+            } else {
+              const queue = this.streamQueues.get(id);
+              if (!queue) {
+                resolve({ done: true, value: undefined });
+                return;
+              }
+              queue.push({ resolve, reject });
+            }
+          });
+        },
+        return: () => {
+          this.streamQueues.delete(id);
+          this.streamBuffers.delete(id);
+          return Promise.resolve({ done: true, value: undefined });
+        }
+      })
+    };
+  }
+  close() {
+    this.closed = true;
+    this.stopPing();
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = undefined;
+    }
+    if (this.ws?.readyState === this.WebSocketImpl.OPEN) {
+      this.ws.close(WS_CLOSE_CODES.NORMAL);
+    }
+    this.ws = null;
+    this.messageQueue.clear();
+    this.streamQueues.clear();
+    this.streamBuffers.clear();
+  }
+};
+
+// src/client.ts
+var tracer = api.trace.getTracer("microservice-client");
+var BaseMicroserviceClient = class {
+  baseUrl;
+  prefix;
+  headers;
+  fetch;
+  wsClient;
+  config;
+  queue;
+  /**
+   * Creates a new MicroserviceClient instance
+   * @param options Client configuration options
+   */
+  constructor(options) {
+    this.baseUrl = options.baseUrl.replace(/\/$/, "");
+    this.prefix = options.prefix || "/api";
+    this.fetch = options.fetch || fetch;
+    this.config = {
+      retry: {
+        maxAttempts: 3,
+        delays: DEFAULT_RETRY_DELAYS,
+        ...options.retry
+      },
+      request: {
+        timeout: DEFAULT_TIMEOUT,
+        ...options.request
+      },
+      stream: {
+        autoClose: true,
+        ...options.stream
+      },
+      ...options
+    };
+    if (options.websocket) {
+      const wsUrl = this.baseUrl.replace(/^http/, "ws");
+      const wsOptions = typeof options.websocket === "boolean" ? {} : options.websocket;
+      this.wsClient = new WebSocketClient({
+        url: `${wsUrl}${this.prefix}/ws`,
+        ...wsOptions
+      });
+    }
+    this.headers = {
+      "Content-Type": "application/json",
+      ...options.headers
+    };
+    this.queue = new RequestQueue(options.request?.concurrency || 10);
+  }
+  /**
+   * 应用请求拦截器
+   * @internal
+   */
+  async applyRequestInterceptors(config) {
+    const interceptors = this.config.interceptors || [];
+    for (const interceptor of interceptors) {
+      if (interceptor.onRequest) {
+        await interceptor.onRequest(config);
+      }
+    }
+  }
+  /**
+   * 应用响应拦截器
+   * @internal
+   */
+  async applyResponseInterceptors(response) {
+    const interceptors = this.config.interceptors || [];
+    let interceptedResponse = response;
+    for (const interceptor of interceptors) {
+      if (interceptor.onResponse) {
+        interceptedResponse = await interceptor.onResponse(interceptedResponse);
+      }
+    }
+    return interceptedResponse;
+  }
+  /**
+   * 应用错误拦截器
+   * @internal
+   */
+  async applyErrorInterceptors(error) {
+    const interceptors = this.config.interceptors || [];
+    let interceptedError = error;
+    for (const interceptor of interceptors) {
+      if (interceptor.onError) {
+        interceptedError = await interceptor.onError(interceptedError);
+      }
+    }
+    return interceptedError;
+  }
+  /**
+   * Sends an HTTP request to the server
+   * @internal
+   */
+  async sendHttpRequest(url, args, isStream, options) {
+    const config = {
+      url,
+      method: "POST",
+      headers: {
+        ...this.headers,
+        ...options?.headers
+      },
+      body: args.reduce(
+        (obj, arg, index) => {
+          obj[index] = arg;
+          return obj;
+        },
+        {}
+      )
+    };
+    const key = crypto.randomUUID();
+    return await this.queue.add(
+      key,
+      async () => {
+        try {
+          await this.applyRequestInterceptors(config);
+          let response;
+          try {
+            response = await this.fetch(url, {
+              method: config.method,
+              headers: config.headers,
+              body: ejson2__default.default.stringify(config.body)
+            });
+          } catch (error) {
+            throw new ConnectionError(
+              error instanceof Error ? error.message : String(error)
+            );
+          }
+          response = await this.applyResponseInterceptors(response);
+          if (isStream) {
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = "";
+            return {
+              [Symbol.asyncIterator]: () => ({
+                next: async () => {
+                  try {
+                    while (true) {
+                      const result2 = tryParseCompleteJson(buffer);
+                      if (result2) {
+                        buffer = result2.remaining;
+                        if (result2.data.error) {
+                          throw new StreamError(result2.data.error);
+                        }
+                        return {
+                          done: result2.data.done || false,
+                          value: result2.data.value
+                        };
+                      }
+                      const { done, value } = await reader.read();
+                      if (done) {
+                        if (buffer.trim()) {
+                          const finalResult = tryParseCompleteJson(buffer);
+                          if (finalResult) {
+                            buffer = finalResult.remaining;
+                            if (finalResult.data.error) {
+                              throw new StreamError(finalResult.data.error);
+                            }
+                            return {
+                              done: finalResult.data.done || false,
+                              value: finalResult.data.value
+                            };
+                          }
+                          throw new StreamError(
+                            "Incomplete stream data at end of stream"
+                          );
+                        }
+                        return { done: true, value: void 0 };
+                      }
+                      buffer += decoder.decode(value, { stream: true });
+                    }
+                  } catch (error) {
+                    if (error instanceof StreamError) {
+                      throw error;
+                    }
+                    throw new StreamError(
+                      error instanceof Error ? error.message : String(error)
+                    );
+                  }
+                },
+                return: async () => {
+                  await reader.cancel();
+                  buffer = "";
+                  return { done: true, value: void 0 };
+                }
+              })
+            };
+          }
+          const result = await response.text();
+          const data = ejson2__default.default.parse(result);
+          if (!response.ok) {
+            switch (response.status) {
+              case HTTP_STATUS.BAD_REQUEST:
+                throw new ClientError(data.error || "Bad request");
+              case HTTP_STATUS.UNAUTHORIZED:
+                throw new ClientError(data.error || "Unauthorized");
+              case HTTP_STATUS.NOT_FOUND:
+                throw new ClientError(data.error || "Not found");
+              default:
+                throw new ConnectionError(data.error || "Request failed");
+            }
+          }
+          if (!data.success) {
+            throw new ClientError(data.error);
+          }
+          return data.data;
+        } catch (error) {
+          const err = error instanceof Error ? error : new Error(String(error));
+          throw await this.applyErrorInterceptors(err);
+        }
+      },
+      options?.timeout || this.config.request?.timeout,
+      url
+    );
+  }
+  /**
+   * Sends a request to the server
+   * @internal
+   */
+  async request(moduleName, methodName, isStream, idempotent, ...args) {
+    const url = `${this.baseUrl}${this.prefix}/${moduleName}/${methodName}`;
+    const span = tracer.startSpan("request");
+    span.setAttribute("moduleName", moduleName);
+    span.setAttribute("methodName", methodName);
+    span.setAttribute("url", url);
+    span.setAttribute("args", args);
+    span.setAttribute("isStream", isStream);
+    span.setAttribute("idempotent", idempotent);
+    span.setAttribute("protocol", this.wsClient ? "websocket" : "http");
+    const result = await this.makeRequest(url, args, isStream, idempotent).catch((error) => {
+      span.recordException(error);
+      span.setStatus({ code: api.SpanStatusCode.ERROR, message: error.message });
+      throw error;
+    }).finally(() => {
+      span.end();
+    });
+    return result;
+  }
+  async makeRequest(url, args, isStream, idempotent) {
+    const makeRequest = async () => {
+      try {
+        if (this.wsClient) {
+          const [moduleName, methodName] = url.split("/").slice(-2);
+          return await this.wsClient.send(
+            moduleName,
+            methodName,
+            args,
+            isStream
+          );
+        }
+        return await this.sendHttpRequest(url, args, isStream);
+      } catch (error) {
+        if (error instanceof TimeoutError || error instanceof ConnectionError) {
+          throw error;
+        }
+        throw new ClientError(
+          error instanceof Error ? error.message : String(error)
+        );
+      }
+    };
+    if (!idempotent || isStream) {
+      return await makeRequest();
+    }
+    return await retry(makeRequest, this.config.retry);
+  }
+  /**
+   * Closes the client and its connections
+   */
+  close() {
+    this.wsClient?.close();
+  }
+  /**
+   * 注册模块方法
+   * 这个方法会被生成的客户端代码调用
+   */
+  registerModuleMethod(moduleName, methodName, options) {
+    const self = this;
+    return async function(...args) {
+      return await self.request(
+        moduleName,
+        methodName,
+        options.stream,
+        options.idempotent,
+        ...args
+      );
+    };
+  }
+  /**
+   * 注册模块
+   * 这个方法会被生成的客户端代码调用
+   */
+  registerModule(moduleName, methods) {
+    const module = {};
+    for (const [methodName, options] of Object.entries(methods)) {
+      module[methodName] = this.registerModuleMethod(
+        moduleName,
+        methodName,
+        options
+      );
+    }
+    return module;
+  }
+};
+
+// src/index.ts
+var MicroserviceClient = BaseMicroserviceClient;
+
+exports.BaseMicroserviceClient = BaseMicroserviceClient;
+exports.ClientError = ClientError;
+exports.ConnectionError = ConnectionError;
+exports.MicroserviceClient = MicroserviceClient;
+exports.StreamError = StreamError;
+exports.TimeoutError = TimeoutError;
