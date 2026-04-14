@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { coerceBody, type CoerceOptions } from "./type-coercion";
 
 /**
  * 构建参数验证 Schema
@@ -15,7 +16,7 @@ import { z } from "zod";
  * ```
  */
 export function buildParamsSchema(
-  schemas: z.ZodTypeAny[]
+  schemas: z.ZodTypeAny[],
 ): z.ZodObject<Record<string, z.ZodTypeAny>> {
   const shape: Record<string, z.ZodTypeAny> = {};
   for (let i = 0; i < schemas.length; i++) {
@@ -31,6 +32,7 @@ export function buildParamsSchema(
  *
  * @param body 请求体对象
  * @param schemas 参数校验 Schema 数组
+ * @param coerceOptions 类型兼容处理选项
  * @returns 验证结果，成功时返回参数数组，失败时返回 ZodError
  *
  * @example
@@ -44,22 +46,22 @@ export function buildParamsSchema(
  */
 export function parseAndValidateParams(
   body: any,
-  schemas: z.ZodTypeAny[]
+  schemas: z.ZodTypeAny[],
+  coerceOptions?: CoerceOptions,
 ): { success: true; data: any[] } | { success: false; error: z.ZodError } {
   if (!body || typeof body !== "object") {
     body = {};
   }
 
-  // 如果没有定义参数，直接返回空数组
   if (schemas.length === 0) {
     return { success: true, data: [] };
   }
 
-  // 构建对象格式的验证 Schema：{"0": schema0, "1": schema1, ...}
+  const processedBody = coerceBody(body, schemas, coerceOptions);
+
   const paramsSchema = buildParamsSchema(schemas);
 
-  // 一次性验证所有参数
-  const validation = paramsSchema.safeParse(body);
+  const validation = paramsSchema.safeParse(processedBody);
   if (!validation.success) {
     return {
       success: false,
@@ -67,7 +69,6 @@ export function parseAndValidateParams(
     };
   }
 
-  // 将验证后的对象转换为数组，按索引顺序提取值
   const validatedData: any[] = [];
   for (let i = 0; i < schemas.length; i++) {
     validatedData[i] = validation.data[String(i)];
@@ -100,12 +101,10 @@ export function parseAndValidateParams(
 export function buildActionPath(
   enginePrefix: string,
   moduleName: string,
-  handlerName: string
+  handlerName: string,
 ): string {
-  // 移除prefix末尾的斜杠，然后拼接路径，最后清理多余的斜杠
   const normalizedPrefix = enginePrefix.replace(/\/+$/, "");
   return `/${normalizedPrefix}/${moduleName}/${handlerName}`
     .replace(/\/+/g, "/")
-    .replace(/^\/\//, "/"); // 处理prefix为空时产生的双斜杠
+    .replace(/^\/\//, "/");
 }
-

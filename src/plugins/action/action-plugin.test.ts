@@ -104,7 +104,7 @@ describe("ActionPlugin", () => {
       testMethod(
         name: string,
         age?: number,
-        email?: string
+        email?: string,
       ): { name: string; age?: number; email?: string } {
         return { name, age, email };
       }
@@ -143,7 +143,7 @@ describe("ActionPlugin", () => {
         name: string,
         age?: number,
         email?: string,
-        active: boolean = false
+        active: boolean = false,
       ): { name: string; age?: number; email?: string; active: boolean } {
         return { name, age, email, active };
       }
@@ -196,7 +196,7 @@ describe("ActionPlugin", () => {
     // 注意：GET/POST 方法支持是 HTTP 路由功能，需要使用 engine.request 测试
     // 使用 engine.request 可以完整执行 ActionPlugin 的路由处理器
     const getResponse = await engine.request(
-      "/test-service/testMethod?0=Alice"
+      "/test-service/testMethod?0=Alice",
     );
     expect(getResponse.ok).toBe(true);
     const getResult = await parseEjsonResponse(getResponse);
@@ -206,11 +206,14 @@ describe("ActionPlugin", () => {
     });
 
     // 测试 POST 请求
-    const postRequest = new Request("http://localhost/test-service/testMethod", {
-      method: "POST",
-      headers: { "Content-Type": "application/ejson" },
-      body: ejson.stringify({ "0": "Bob" }),
-    });
+    const postRequest = new Request(
+      "http://localhost/test-service/testMethod",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/ejson" },
+        body: ejson.stringify({ "0": "Bob" }),
+      },
+    );
     const postResponse = await engine.request(postRequest);
     expect(postResponse.ok).toBe(true);
     const postResult = await parseEjsonResponse(postResponse);
@@ -224,7 +227,7 @@ describe("ActionPlugin", () => {
     // 注意：引擎 prefix 是 HTTP 路由功能，需要使用 engine.request 或 fetch 测试
     // 创建带prefix的引擎
     const { engine: engineWithPrefix, Module: ModuleWithPrefix } =
-        Testing.createTestEngine({
+      Testing.createTestEngine({
         plugins: [new ActionPlugin()],
         options: {
           name: "test-service",
@@ -247,7 +250,7 @@ describe("ActionPlugin", () => {
 
     // GET 请求从 query 参数解析（新路由模式：引擎prefix + 模块名 + Handler名）
     const response = await fetch(
-      `http://localhost:${port}/api/test-service/testMethod?0=Alice`
+      `http://localhost:${port}/api/test-service/testMethod?0=Alice`,
     );
 
     expect(response.status).toBe(200);
@@ -300,7 +303,7 @@ describe("ActionPlugin", () => {
               },
             },
           }),
-        }
+        },
       );
 
       expect(response1.status).toBe(400);
@@ -331,7 +334,7 @@ describe("ActionPlugin", () => {
               },
             },
           }),
-        }
+        },
       );
 
       expect(response2.status).toBe(400);
@@ -392,7 +395,7 @@ describe("ActionPlugin", () => {
               total: 100,
             },
           }),
-        }
+        },
       );
 
       expect(response.status).toBe(400);
@@ -421,7 +424,7 @@ describe("ActionPlugin", () => {
                 country: z.string(),
               }),
             }),
-          })
+          }),
         ),
       });
 
@@ -461,7 +464,7 @@ describe("ActionPlugin", () => {
               ],
             },
           }),
-        }
+        },
       );
 
       expect(response.status).toBe(400);
@@ -515,7 +518,7 @@ describe("ActionPlugin", () => {
           method: "POST",
           headers: { "Content-Type": "application/ejson" },
           body: ejson.stringify({ "0": "PROD-1" }),
-        }
+        },
       );
 
       expect(response.status).toBe(400);
@@ -543,7 +546,7 @@ describe("ActionPlugin", () => {
           z.object({
             productId: z.string(),
             quantity: z.number(),
-          })
+          }),
         ),
       });
 
@@ -554,7 +557,7 @@ describe("ActionPlugin", () => {
         })
         processOrder(
           user: z.infer<typeof UserSchema>,
-          order: z.infer<typeof OrderSchema>
+          order: z.infer<typeof OrderSchema>,
         ) {
           return { user, order };
         }
@@ -586,7 +589,7 @@ describe("ActionPlugin", () => {
               ],
             },
           }),
-        }
+        },
       );
 
       expect(response.status).toBe(400);
@@ -599,6 +602,104 @@ describe("ActionPlugin", () => {
       // 应该包含两个参数的错误
       expect(error.error).toContain("参数[0]");
       expect(error.error).toContain("参数[1]");
+    });
+
+    it("应该在校验失败时显示实际收到的值", async () => {
+      @Module("test-service")
+      class TestService {
+        @Action({
+          params: [z.string(), z.number()],
+          returns: z.object({
+            id: z.string(),
+            aiGeneratedId: z.number(),
+          }),
+        })
+        testMethod(name: string, age: number) {
+          return { id: name, aiGeneratedId: age };
+        }
+      }
+
+      const port = await engine.start();
+
+      // 测试传入错误类型的参数（age 应该是 number，但传入了 string）
+      const response = await fetch(
+        `http://localhost:${port}/test-service/testMethod`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/ejson" },
+          body: ejson.stringify({
+            "0": "Alice",
+            "1": "not-a-number", // 类型错误：应该是 number
+          }),
+        },
+      );
+
+      expect(response.status).toBe(400);
+      const error = (await parseEjsonResponse(response)) as {
+        success: boolean;
+        error: string;
+      };
+      expect(error.success).toBe(false);
+      expect(error.error).toContain("参数[1]");
+      expect(error.error).toContain("Invalid input");
+      expect(error.error).toContain("not-a-number");
+
+      // 测试返回值校验也应该显示实际收到的值
+      const response2 = await fetch(
+        `http://localhost:${port}/test-service/testMethod`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/ejson" },
+          body: ejson.stringify({
+            "0": "Alice",
+            "1": 25,
+          }),
+        },
+      );
+
+      // 注意：返回值 aiGeneratedId 期望是 number，但如果返回字符串就会失败
+      // 这里我们无法直接控制返回值类型，所以通过修改服务来模拟返回值错误
+    });
+
+    it("应该在返回值类型错误时显示实际收到的值", async () => {
+      @Module("test-service")
+      class TestService {
+        @Action({
+          params: [z.string()],
+          returns: z.object({
+            name: z.string(),
+            aiGeneratedId: z.number(),
+          }),
+        })
+        testMethod(name: string) {
+          // 故意返回错误类型：aiGeneratedId 应该是 number，但返回了 string
+          return {
+            name,
+            aiGeneratedId: "abc123" as any,
+          };
+        }
+      }
+
+      const port = await engine.start();
+
+      const response = await fetch(
+        `http://localhost:${port}/test-service/testMethod`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/ejson" },
+          body: ejson.stringify({ "0": "Alice" }),
+        },
+      );
+
+      expect(response.status).toBe(400);
+      const error = (await parseEjsonResponse(response)) as {
+        success: boolean;
+        error: string;
+      };
+      expect(error.success).toBe(false);
+      expect(error.error).toContain("Return value validation failed");
+      expect(error.error).toContain("aiGeneratedId");
+      expect(error.error).toContain("abc123");
     });
   });
 });

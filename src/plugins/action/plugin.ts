@@ -168,6 +168,7 @@ export class ActionPlugin implements Plugin<ActionModuleOptions> {
           }
 
           // 解析并验证参数（一次性验证所有参数）
+          const originalBody = body;
           const validation = parseAndValidateParams(body, paramSchemas);
           if (!validation.success) {
             const errors = validation.error.issues || [];
@@ -192,7 +193,17 @@ export class ActionPlugin implements Plugin<ActionModuleOptions> {
                         })
                         .join(".")
                     : "unknown";
-                return `${pathStr}: ${e.message}`;
+                let detail = e.message;
+                if (e.code === "invalid_type") {
+                  const actualValue = path.reduce(
+                    (obj: any, key) => obj?.[key],
+                    originalBody,
+                  );
+                  if (actualValue !== undefined) {
+                    detail = `${e.message}, received ${JSON.stringify(actualValue)}`;
+                  }
+                }
+                return `${pathStr}: ${detail}`;
               })
               .join(", ")}`;
             const errorResponse = ejson.stringify({
@@ -304,7 +315,17 @@ export class ActionPlugin implements Plugin<ActionModuleOptions> {
                     path.length > 0
                       ? path.map((p) => String(p)).join(".")
                       : "root";
-                  return `${pathStr}: ${e.message}`;
+                  let detail = e.message;
+                  if (e.code === "invalid_type") {
+                    const actualValue = path.reduce(
+                      (obj: any, key) => obj?.[key],
+                      result,
+                    );
+                    if (actualValue !== undefined) {
+                      detail = `${e.message}, received ${JSON.stringify(actualValue)}`;
+                    }
+                  }
+                  return `${pathStr}: ${detail}`;
                 })
                 .join(", ")}`;
               const errorResponse = ejson.stringify({
