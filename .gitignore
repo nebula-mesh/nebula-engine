@@ -9,3 +9,4 @@ coverage/
 docs/.vitepress/dist/
 docs/.vitepress/cache/
 .reasonix/
+reasonix.toml
