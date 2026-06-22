@@ -3,6 +3,7 @@ import { defineConfig } from "vitepress";
 export default defineConfig({
   title: "Nebula Engine",
   description: "基于 Hono 的轻量级微服务引擎框架",
+  base: "/nebula-engine/",
 
   // 将 raw markdown 复制到 dist，供 LLM 通过 HTTP fetch 读取
   transformPageData(pageData) {
