@@ -1,0 +1,58 @@
+{
+  "name": "nebula-client",
+  "version": "1.6.1",
+  "description": "Type-safe HTTP client for Nebula Engine",
+  "keywords": [
+    "microservice",
+    "http",
+    "client",
+    "node"
+  ],
+  "author": "imean",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://git.imean.tech/imean/imean-microservice-framework.git"
+  },
+  "type": "module",
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest",
+    "coverage": "vitest --coverage",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "dayjs": "1.11.13",
+    "ejson": "^2.2.3",
+    "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "@opentelemetry/api": "^1.x"
+  },
+  "devDependencies": {
+    "@types/ejson": "^2.2.2",
+    "@types/node": "^20.0.0",
+    "nebula-engine": "workspace:*",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.9"
+  },
+  "engines": {
+    "node": ">=16"
+  }
+}

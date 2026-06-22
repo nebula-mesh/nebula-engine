@@ -6,8 +6,12 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsup",
+    "build:all": "pnpm -r build",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs && node docs/.vitepress/copy-raw.cjs",
     "dev": "tsx tests/integration/start-service.ts",
-    "test": "vitest --run",
+    "test": "pnpm --filter nebula-client build && vitest --run",
+    "test:all": "pnpm -r test",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --run --coverage",
     "prepublishOnly": "npm run build && npm run test"
@@ -25,32 +29,33 @@
     "LICENSE"
   ],
   "author": "",
-  "license": "MIT",
+  "private": true,
   "dependencies": {
-    "@hono/node-server": "^1.19.14",
-    "@hono/otel": "^1.1.1",
+    "@hono/node-server": "^2.0.5",
+    "@hono/otel": "^1.1.2",
     "@opentelemetry/api": "^1",
-    "@opentelemetry/sdk-metrics": "^2.6.0",
+    "@opentelemetry/sdk-metrics": "^2.8.0",
     "ejson": "^2.2.3",
     "etcd3": "^1.1.2",
-    "hono": "^4.12.12",
-    "nanoid": "^5.1.6",
-    "prettier": "^3.7.4",
+    "hono": "^4.12.26",
+    "nanoid": "^5.1.15",
+    "prettier": "^3.8.4",
     "winston": "^3.19.0",
-    "zod": "^4.1.13"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@opentelemetry/api": "^1",
     "@types/ejson": "^2.2.2",
-    "@types/node": "^25.0.1",
-    "@vitest/coverage-v8": "4.0.15",
-    "@vitest/ui": "^4.0.15",
-    "imean-service-client": "^1.6.0",
-    "ioredis": "^5.10.0",
+    "@types/node": "^26.0.0",
+    "@vitest/coverage-v8": "^4.1.9",
+    "@vitest/ui": "^4.1.9",
+    "ioredis": "^5.11.1",
+    "nebula-client": "workspace:*",
     "tsup": "^8.5.1",
-    "tsx": "^4.21.0",
-    "typescript": "^5.9.3",
-    "vitest": "^4.0.15"
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3",
+    "vitepress": "^1.6.4",
+    "vitest": "^4.1.9"
   },
   "peerDependencies": {
     "@opentelemetry/api": "^1"

@@ -6,3 +6,6 @@ dist/
 .env
 .env.local
 coverage/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
+.reasonix/

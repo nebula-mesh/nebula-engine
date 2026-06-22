@@ -172,8 +172,8 @@ export async function generateClientCode(
   const imports = [
     "// 这个文件是自动生成的，请不要手动修改",
     "",
-    'import { MicroserviceClient as BaseMicroserviceClient } from "imean-service-client";',
-    'export * from "imean-service-client";',
+    'import { MicroserviceClient as BaseMicroserviceClient } from "nebula-client";',
+    'export * from "nebula-client";',
     "",
   ].join("\n");
 

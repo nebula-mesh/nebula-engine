@@ -1,0 +1,11 @@
+export const DEFAULT_TIMEOUT = 60000;
+export const DEFAULT_RETRY_DELAYS = [500, 1000, 3000, 5000];
+export const DEFAULT_BUFFER_SIZE = 1000;
+
+export const HTTP_STATUS = {
+  OK: 200,
+  BAD_REQUEST: 400,
+  UNAUTHORIZED: 401,
+  NOT_FOUND: 404,
+  INTERNAL_ERROR: 500,
+} as const;
