@@ -1,3 +1,13 @@
 {
-  "type": "module"
+  "name": "nebula-engine-docs",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vitepress dev .",
+    "build": "vitepress build . && node .vitepress/copy-raw.cjs"
+  },
+  "devDependencies": {
+    "vitepress": "^1.6.4"
+  }
 }
